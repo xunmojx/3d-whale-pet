@@ -22,5 +22,5 @@
 # 必须指到具体 .js 文件：Node 的 ESM 解析不支持目录导入（会报
 # ERR_UNSUPPORTED_DIR_IMPORT）。
 - insert:
-    - id: 3d-whale-pet
+    - id: dsh-3d-whale-pet
       name: "./lib/index.js"
