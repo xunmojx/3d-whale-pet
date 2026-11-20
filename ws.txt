@@ -1,0 +1,13 @@
+sendToWin 定义: function sendToWin(channel, payload) {
+  if (quitting) return false
+  if (!win || win.isDestroyed()) return false
+  const wc = win.webContents
+  if (!wc || wc.isDestroyed()) return false
+  try {
+    wc.send(channel, payload)
+    return true
+  } catch {
+    // 窗口正在销毁的竞态窗口期：静默忽略，不打扰用户
+    return false
+---
+WS: pet:menu-state
