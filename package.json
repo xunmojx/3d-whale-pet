@@ -1,6 +1,6 @@
 {
   "name": "3d-whale-pet",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "description": "常驻桌面的 3D 小虎鲸：跟着鼠标游、头始终朝箭头，闲了自己溜达、翻身、打盹，被摸会眯眼冒爱心。",
   "type": "module",
   "main": "lib/index.js",
