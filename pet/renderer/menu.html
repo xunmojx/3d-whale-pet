@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>菜单</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; user-select: none; }
+    html, body {
+        width: 100%; height: 100%;
+        background: transparent;
+        overflow: hidden;
+        font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+        font-size: 13px;
+        color: #1a1f36;
+    }
+
+    .panel {
+        position: absolute;
+        left: 0; top: 0;
+        width: 182px;
+        background: rgba(255, 255, 255, 0.97);
+        border-radius: 14px;
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22), 0 1px 3px rgba(0, 0, 0, 0.12);
+        padding: 6px;
+    }
+
+    .item {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        height: 32px;
+        padding: 0 9px;
+        border-radius: 9px;
+        cursor: default;
+        white-space: nowrap;
+    }
+    .item:hover { background: rgba(77, 107, 254, 0.10); }
+    .item.open { background: rgba(77, 107, 254, 0.12); }
+    .item .ico { width: 16px; text-align: center; font-size: 13px; flex: none; }
+    .item .txt { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+    .item .tail { color: #8a93ad; font-size: 11px; flex: none; padding-left: 8px; }
+    .item .tail.rot { transform: rotate(90deg); }
+
+    .item .box {
+        width: 13px; height: 13px; flex: none;
+        border-radius: 4px;
+        border: 1.5px solid #c3cbe0;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 9px; color: #fff;
+    }
+    .item.on .box { background: #4d6bfe; border-color: #4d6bfe; }
+    .item .box::after { content: '✓'; opacity: 0; }
+    .item.on .box::after { opacity: 1; }
+
+    .sep { height: 1px; margin: 5px 9px; background: rgba(26, 31, 54, 0.09); }
+
+    /* 内联子项：缩进一层，不横向展开（窗口才能窄到放进虎鲸旁边） */
+    .subitem {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        height: 30px;
+        margin-left: 22px;
+        padding: 0 9px;
+        border-radius: 8px;
+        cursor: default;
+        font-size: 12.5px;
+        color: #3a435c;
+    }
+    .subitem:hover { background: rgba(77, 107, 254, 0.10); }
+    .subitem .dot {
+        width: 6px; height: 6px; border-radius: 50%;
+        background: transparent; border: 1.5px solid #c3cbe0; flex: none;
+    }
+    .subitem.on .dot { background: #4d6bfe; border-color: #4d6bfe; }
+    .subitem .lbl { flex: 1; }
+
+    /* 新版本提示：压在菜单最上面，用主色托一下 */
+    .item.upd {
+        background: rgba(77, 107, 254, 0.12);
+        color: #2c3f9e;
+        font-weight: 600;
+    }
+    .item.upd:hover { background: rgba(77, 107, 254, 0.22); }
+    .item.upd .tail { color: #4d6bfe; font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="panel" id="main"></div>
+<script>
+(function () {
+    const api = window.petWindow || {};
+    const root = document.getElementById('main');
+    let state = null;
+    let expanded = null;      // 当前展开的子菜单 id
+
+    const ITEMS = [
+        { id: 'follow', ico: '🖱️', label: '跟随鼠标', check: 'follow' },
+        { id: 'roam', ico: '🔄', label: '待机自动漫游', check: 'roam' },
+        { sep: true },
+        { id: 'game', ico: '🎮', label: '大鱼吃小鱼', check: 'game' },
+        {
+            id: 'size', ico: '📏', label: '体型大小', tail: '›',
+            sub: [
+                { value: 0.7, label: '小' },
+                { value: 1.0, label: '中' },
+                { value: 1.35, label: '大' },
+                { value: 1.7, label: '特大' },
+            ],
+            current: (s) => s.size,
+        },
+        {
+            id: 'skin', ico: '🎨', label: '换皮肤', tail: '›',
+            sub: [
+                { value: 'classic', label: '🔵 深寻蓝' },
+                { value: 'night', label: '🌙 虎鲸黑' },
+                { value: 'pink', label: '🌸 草莓粉' },
+                { value: 'green', label: '🌿 薄荷绿' },
+                { value: 'gold', label: '🌟 土豪金' },
+                { value: 'custom', label: '🎨 自定义配色…' },
+            ],
+            current: (s) => s.skin,
+        },
+        {
+            id: 'dance', ico: '🎚', label: '跳舞强度', tail: '›',
+            sub: [
+                { value: 0, label: '🚫 关闭' },
+                { value: 0.4, label: '🐢 低' },
+                { value: 0.7, label: '🐬 中' },
+                { value: 1, label: '🚀 高' },
+            ],
+            current: (s) => s.dance,
+        },
+        { id: 'player', ico: '🎵', label: '播放器' },
+        { id: 'balance', ico: '💰', label: '查询余额' },
+        { id: 'help', ico: '📖', label: '帮助' },
+        { sep: true },
+        { id: 'minimize', ico: '🗕', label: '最小化' },
+        { id: 'quit', ico: '✕', label: '退出' },
+    ];
+
+    function esc(t) {
+        return String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    }
+
+    function rowHTML(it) {
+        if (it.sep) return '<div class="sep"></div>';
+        const on = it.check && state && state[it.check];
+        const isOpen = expanded === it.id;
+        let lead = '';
+        if (it.check) lead += '<span class="box"></span>';
+        if (it.ico) lead += '<span class="ico">' + it.ico + '</span>';
+        const tail = it.sub
+            ? '<span class="tail' + (isOpen ? ' rot' : '') + '">›</span>'
+            : '';
+        return '<div class="item' + (on ? ' on' : '') + (isOpen ? ' open' : '') +
+               '" data-id="' + it.id + '">' + lead +
+               '<span class="txt">' + esc(it.label) + '</span>' + tail + '</div>';
+    }
+
+    function subHTML(it) {
+        const cur = it.current && state ? it.current(state) : null;
+        return it.sub.map((o) => {
+            const on = String(o.value) === String(cur);
+            return '<div class="subitem' + (on ? ' on' : '') + '" data-pid="' + it.id +
+                   '" data-v="' + o.value + '"><span class="dot"></span>' +
+                   '<span class="lbl">' + esc(o.label) + '</span></div>';
+        }).join('');
+    }
+
+    function render() {
+        let html = '';
+        // 有新版本：置顶一条醒目提示，点了去仓库页
+        if (state && state.update && state.update.version) {
+            html += '<div class="item upd" data-id="__update__">' +
+                    '<span class="ico">⬆️</span>' +
+                    '<span class="txt">新版本 ' + esc(state.update.version) + '</span>' +
+                    '<span class="tail">去更新</span></div>' +
+                    '<div class="sep"></div>';
+        }
+        for (const it of ITEMS) {
+            html += rowHTML(it);
+            if (!it.sep && expanded === it.id && it.sub) html += subHTML(it);
+        }
+        root.innerHTML = html;
+
+        root.querySelectorAll('.item').forEach((el) => {
+            if (el.dataset.id === '__update__') {
+                el.addEventListener('click', () => {
+                    api.menuAction && api.menuAction({ id: 'update' });
+                    close();
+                });
+                return;
+            }
+            const it = ITEMS.find((x) => x.id === el.dataset.id);
+            if (!it) return;
+            el.addEventListener('click', () => onClick(it));
+        });
+        root.querySelectorAll('.subitem').forEach((el) => {
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                api.menuAction && api.menuAction({ id: el.dataset.pid, value: el.dataset.v });
+                close();
+            });
+        });
+        // 展开子菜单后，窗口可能装不下，通知主进程调整高度
+        if (api.menuResize) api.menuResize(Math.ceil(root.getBoundingClientRect().height) + 12);
+    }
+
+    function onClick(it) {
+        if (it.sub) {
+            expanded = (expanded === it.id) ? null : it.id;
+            render();
+            return;
+        }
+        api.menuAction && api.menuAction({ id: it.id });
+        close();
+    }
+
+    function close() {
+        api.menuClose && api.menuClose();
+    }
+
+    document.addEventListener('mousedown', (e) => {
+        if (!e.target.closest('.panel')) close();
+    });
+    window.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    window.addEventListener('blur', close);
+    document.addEventListener('contextmenu', (e) => { e.preventDefault(); close(); });
+
+    if (api.onMenuState) api.onMenuState((s) => { state = s || {}; render(); });
+    else render();
+})();
+</script>
+</body>
+</html>
