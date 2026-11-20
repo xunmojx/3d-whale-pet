@@ -370,7 +370,10 @@ function createWindow() {
     }
     // 透明窗口在 ready-to-show 阶段设坐标会被系统忽略；等页面真正加载完再设，
     // 并在显示之后再补一次。
-    win.webContents.on('did-finish-load', () => {
+    // 页面的 <title> 不要自动同步到窗口标题，否则用户取的名字会被覆盖回默认
+  win.on('page-title-updated', (e) => { try { e.preventDefault() } catch { /* 忽略 */ } })
+
+  win.webContents.on('did-finish-load', () => {
       pin()
       try { win.show() } catch { /* 忽略 */ }
       setTimeout(() => pin(), 400)
@@ -957,6 +960,8 @@ let renameWin = null
 function applyPetName() {
   if (!win || win.isDestroyed()) return
   try { win.setTitle(petName ? petName : '虎鲸桌宠') } catch { /* 忽略 */ }
+  // 页面也要知道名字，闲聊台词会以它为主语
+  sendToWin('pet:set-name', petName)
 }
 
 function openRenamePanel() {
@@ -1618,6 +1623,7 @@ app.whenReady().then(() => {
   createWindow()
   applyPetName()
   win.webContents.on('did-finish-load', () => {
+    applyPetName()   // 页面加载完会用自己的 <title> 覆盖窗口标题，这里再压一次
     connectGateway()
     // 把上次的皮肤和跳舞强度推给渲染层
     sendToWin('pet:set-skin', currentSkin)
