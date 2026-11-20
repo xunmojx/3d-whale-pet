@@ -961,6 +961,22 @@
                     }
                 } catch (e) { /* 量不到就保持 zoom=1 */ }
             }
+            // 头顶在屏幕上的坐标（气泡定位用）：3D 对象只在本段作用域可见，
+            // 气泡在另一段 IIFE 里，只能通过这个钩子拿。
+            window.__petProjectHead = function () {
+                try {
+                    const box = new THREE.Box3().setFromObject(petGroup);
+                    const v = new THREE.Vector3(
+                        (box.min.x + box.max.x) / 2,
+                        box.max.y,
+                        (box.min.z + box.max.z) / 2
+                    ).project(camera);
+                    return {
+                        x: (v.x * 0.5 + 0.5) * window.innerWidth,
+                        y: (-v.y * 0.5 + 0.5) * window.innerHeight,
+                    };
+                } catch (e) { return null; }
+            };
             window.__petMeasureModel = function () {
                 try {
                     const box = new THREE.Box3().setFromObject(petGroup);
@@ -1389,17 +1405,9 @@
                 // 之前是按 side 偏移算的，体型一变位置就偏，大号时看着离得老远。
                 let tx = null, ty = null;
                 try {
-                    if (typeof petGroup !== 'undefined' && petGroup && camera) {
-                        const box = new THREE.Box3().setFromObject(petGroup);
-                        const top = new THREE.Vector3(
-                            (box.min.x + box.max.x) / 2,
-                            box.max.y,
-                            (box.min.z + box.max.z) / 2
-                        ).project(camera);
-                        tx = (top.x * 0.5 + 0.5) * window.innerWidth;
-                        ty = (-top.y * 0.5 + 0.5) * window.innerHeight;
-                    }
-                } catch (e) { /* 拿不到就退回中心 */ }
+                    const head = window.__petProjectHead ? window.__petProjectHead() : null;
+                    if (head) { tx = head.x; ty = head.y; }
+                } catch (e) { /* 拿不到就退回默认位置 */ }
 
                 const bw = bubble.offsetWidth || 0;
                 const margin = 10;
@@ -1410,9 +1418,11 @@
                 bubble.style.left = Math.round(x) + 'px';
 
                 if (ty != null) {
-                    // 气泡底边贴在头顶上方 8px
+                    // 气泡底边贴在头顶上方。留白按窗口高度算：小体型窗口矮，
+                    // 固定 8px 会被背鳍戳进来，看着就是「气泡压着鱼鳍」。
+                    const gapPx = Math.max(12, Math.round(window.innerHeight * 0.055));
                     bubble.style.transform = 'translate(-50%, -100%)';
-                    bubble.style.top = Math.round(Math.max(4, ty - 8)) + 'px';
+                    bubble.style.top = Math.round(Math.max(2, ty - gapPx)) + 'px';
                 }
             }
 
