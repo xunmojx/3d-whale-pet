@@ -55,11 +55,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/REPLACE_WITH_YOUR_NAME/3d-whale-pet.git"
+    "url": "git+https://github.com/xunmojx/dsh-3d-whale-pet.git"
   },
-  "homepage": "https://github.com/REPLACE_WITH_YOUR_NAME/3d-whale-pet#readme",
+  "homepage": "https://github.com/xunmojx/dsh-3d-whale-pet#readme",
   "bugs": {
-    "url": "https://github.com/REPLACE_WITH_YOUR_NAME/3d-whale-pet/issues"
+    "url": "https://github.com/xunmojx/dsh-3d-whale-pet/issues"
   },
   "license": "MIT"
 }
