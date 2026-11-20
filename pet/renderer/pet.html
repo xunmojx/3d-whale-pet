@@ -1393,21 +1393,37 @@
                 const margin = 10;
                 const lo = bw / 2 + margin;
                 const hi = window.innerWidth - bw / 2 - margin;
-                let x = tx == null ? window.innerWidth / 2 : tx;
+                let x = window.innerWidth / 2;   // 水平居中到窗口；模型转身时包围盒中心会偏，不适合拿来定位
                 x = Math.min(Math.max(x, lo), Math.max(lo, hi));
                 bubble.style.left = Math.round(x) + 'px';
 
                 if (ty != null) {
                     // 气泡底边贴在头顶上方。留白按窗口高度算：小体型窗口矮，
                     // 固定 8px 会被背鳍戳进来，看着就是「气泡压着鱼鳍」。
-                    const gapPx = Math.max(12, Math.round(window.innerHeight * 0.055));
+                    // 留白收小一点：大体型原来离头 37px，看着飘太高，现在约 20px
+                    const gapPx = Math.max(12, Math.round(window.innerHeight * 0.03));
                     const bottom = Math.round(ty - gapPx);
-                    // 小体型窗口矮，长回复（最大 220px 高）会顶出窗口上沿被裁掉。
-                    // 先按「头顶以上还剩多少空间」收窄气泡高度，再定位，就不会裁。
-                    const avail = Math.max(24, bottom - 2);   // 不能用固定下限，否则小窗口还是会顶出上沿
-                    bubble.style.maxHeight = Math.min(220, avail) + 'px';
-                    bubble.style.transform = 'translate(-50%, -100%)';
-                    bubble.style.top = Math.max(2, bottom) + 'px';
+                    const avail = Math.max(24, bottom - 2);
+
+                    // 先放开限制量一下这段字的自然高度
+                    bubble.style.maxHeight = 'none';
+                    // scrollHeight 比实际可见内容多 8px（底部内边距进了滚动区），先减掉
+                    const natural = Math.max(24, bubble.scrollHeight - 8);
+                    const capWindow = Math.max(60, window.innerHeight - 6);
+                    const h = Math.min(220, natural, capWindow);
+
+                    if (avail >= h) {
+                        // 头顶上方放得下：照旧贴在头顶上方，不挡本体
+                        bubble.style.maxHeight = h + 'px';
+                        bubble.style.transform = 'translate(-50%, -100%)';
+                        bubble.style.top = Math.max(2, bottom) + 'px';
+                    } else {
+                        // 放不下（小体型常见）：从窗口顶部往下排，多出来的那点盖住上面一点，
+                        // 至少保证整段字能看全，最后两个字不会被截。
+                        bubble.style.maxHeight = h + 'px';
+                        bubble.style.transform = 'translateX(-50%)';
+                        bubble.style.top = '2px';
+                    }
                 }
             }
 
@@ -1442,7 +1458,7 @@
                 placeBubble();
                 spawnSpeechHearts();
                 bubble.classList.add('show');
-                bubble.scrollTop = bubble.scrollHeight; // 长回复自动滚到底部
+                bubble.scrollTop = 0;            // 从第一行开始看，不做自动滚动
                 clearTimeout(bubbleTimer);
                 if (ms) bubbleTimer = setTimeout(function () { bubble.classList.remove('show'); }, ms);
             }
