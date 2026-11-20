@@ -269,6 +269,7 @@ function loadConfig() {
   if (typeof savedCfg.roam === 'boolean') ROAM.enabled = savedCfg.roam
   if (typeof savedCfg.skin === 'string' && savedCfg.skin) currentSkin = savedCfg.skin
   if (typeof savedCfg.dance === 'number') currentDance = savedCfg.dance
+  if (typeof savedCfg.name === 'string') petName = savedCfg.name
 }
 function saveConfig() {
   if (wiping) return          // 正在清数据：退出时也别写回
@@ -279,6 +280,7 @@ function saveConfig() {
     savedCfg.roam = ROAM.enabled
     savedCfg.skin = currentSkin
     savedCfg.dance = currentDance
+    savedCfg.name = petName
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(savedCfg, null, 2))
   } catch {
     // 写不进去（权限之类）就算了，不该影响桌宠运行
@@ -423,6 +425,8 @@ let followIdle = false
 // 皮肤 / 跳舞强度（持久化用，loadConfig 里会读回来）
 let currentSkin = 'classic'
 let currentDance = 0.7
+/** 用户给它取的名字；空串表示用默认标题 */
+let petName = ''
 
 let followFx = null
 let followFy = null
@@ -909,6 +913,92 @@ const DANCE_LEVELS = [
 let menuWin = null
 let menuCenterY = 0
 
+// ==================== 安装来源 ====================
+/**
+ * 这个插件当初是从哪儿装上的。
+ * 读 profile 的 package.json 里 dependencies["3d-whale-pet"] 那一条：
+ *   github:xunmojx/3d-whale-pet      → 从 GitHub（或插件市场）装的
+ *   https://gitee.com/.../xxx.tgz    → 从 Gitee 的 tarball 装的
+ * @returns {string} 空串表示读不到
+ */
+function installSpec() {
+  try {
+    // __dirname = <profile>/node_modules/3d-whale-pet/pet
+    const profileDir = path.resolve(__dirname, '..', '..', '..')
+    const pkg = JSON.parse(fs.readFileSync(path.join(profileDir, 'package.json'), 'utf8'))
+    const deps = (pkg && pkg.dependencies) || {}
+    return String(deps['3d-whale-pet'] || '')
+  } catch {
+    return ''
+  }
+}
+
+/** 是不是从 GitHub（含插件市场）装的。 */
+function installedFromGitHub() {
+  const spec = installSpec()
+  return /^github:/i.test(spec) || /^https?:\/\/github\.com\//i.test(spec)
+}
+
+/** DSH 自己的界面地址（用于把用户送回插件页）。 */
+function dshOrigin() {
+  const raw = process.env.WHALE_PET_URL || ''
+  try {
+    const u = new URL(raw)
+    return u.origin
+  } catch {
+    return ''
+  }
+}
+
+// ==================== 取名 ====================
+let renameWin = null
+
+/** 把名字应用到窗口标题（任务栏上能看到）。 */
+function applyPetName() {
+  if (!win || win.isDestroyed()) return
+  try { win.setTitle(petName ? petName : '虎鲸桌宠') } catch { /* 忽略 */ }
+}
+
+function openRenamePanel() {
+  if (renameWin && !renameWin.isDestroyed()) { renameWin.focus(); return }
+  renameWin = new BrowserWindow({
+    width: 300,
+    height: 230,
+    resizable: false,
+    frame: false,
+    alwaysOnTop: true,
+    backgroundColor: '#141a2c',
+    title: '取个名字',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+  renameWin.loadFile(path.join(__dirname, 'renderer', 'rename.html'))
+  try { renameWin.setAlwaysOnTop(true, 'screen-saver') } catch { /* 忽略 */ }
+  renameWin.webContents.on('did-finish-load', () => {
+    try { renameWin.webContents.send('pet:current-name', petName) } catch { /* 忽略 */ }
+  })
+  renameWin.once('ready-to-show', () => {
+    try { renameWin.show(); renameWin.focus(); renameWin.moveTop() } catch { /* 忽略 */ }
+  })
+  renameWin.on('closed', () => { renameWin = null })
+}
+
+ipcMain.on('pet:set-name', (_e, v) => {
+  petName = String(v || '').trim().slice(0, 12)
+  applyPetName()
+  saveConfig()
+  if (petName) sendToWin('pet:say', { text: `好，以后叫我${petName}。`, ms: 5000 })
+})
+
+ipcMain.on('pet:close-rename', () => {
+  if (renameWin && !renameWin.isDestroyed()) {
+    try { renameWin.close() } catch { /* 忽略 */ }
+  }
+})
+
 // ==================== 检查更新 ====================
 // 仓库里放一份 version.json，桌宠启动时悄悄拉一下；比本地新就在菜单顶部提示。
 // 拉不到就算了——网络问题不该打扰用户。
@@ -990,6 +1080,7 @@ function menuStateNow() {
     size: sizeScale,
     skin: currentSkin,
     dance: currentDance,
+    name: petName,
     update: updateInfo,
   }
 }
@@ -1166,18 +1257,33 @@ ipcMain.on('pet:menu-action', (_e, a) => {
       sendToWin('pet:set-dance-freq', currentDance)
       saveConfig()
       break
+    case 'rename': openRenamePanel(); break
     case 'player': openPlayer(); break
     case 'balance': queryBalance(); break
     case 'help': openHelpPanel(); break
     case 'update': {
-      // 不跳浏览器：把安装链接放进剪贴板，再用气泡告诉用户去哪操作
-      const url = (updateInfo && updateInfo.url) || ''
-      if (!url) break
-      try { clipboard.writeText(url) } catch { /* 剪贴板不可用就算了 */ }
-      sendToWin('pet:say', {
-        text: `新版 ${updateInfo.version} 的链接已经复制啦，在插件面板卸载我，再粘贴到安装插件中重新下载就行`,
-        ms: 7000,
-      })
+      const ver = (updateInfo && updateInfo.version) || ''
+      if (!ver) break
+      if (installedFromGitHub()) {
+        // 从 GitHub / 插件市场装的：直接把人送回 DSH 的插件页，让面板帮他更新
+        const origin = dshOrigin()
+        if (origin) {
+          try { shell.openExternal(origin) } catch { /* 打不开就算了 */ }
+        }
+        sendToWin('pet:say', {
+          text: `新版 ${ver} 已经在插件页等着了，去「插件」里点一下更新就行`,
+          ms: 7000,
+        })
+      } else {
+        // 从 Gitee 的 tgz 装的：没有自动更新的通道，只能复制链接让用户重装
+        const url = (updateInfo && updateInfo.url) || ''
+        if (!url) break
+        try { clipboard.writeText(url) } catch { /* 剪贴板不可用就算了 */ }
+        sendToWin('pet:say', {
+          text: `新版 ${ver} 的链接已经复制啦，在插件面板卸载我，再粘贴到安装插件中重新下载就行`,
+          ms: 7000,
+        })
+      }
       break
     }
     case 'minimize': try { if (win && !win.isDestroyed()) win.minimize() } catch { /* 忽略 */ } break
@@ -1510,6 +1616,7 @@ app.whenReady().then(() => {
   setInterval(() => checkUpdate(true), 10 * 60 * 1000)  // 一直开着也每十分钟看一眼
   loadConfig()
   createWindow()
+  applyPetName()
   win.webContents.on('did-finish-load', () => {
     connectGateway()
     // 把上次的皮肤和跳舞强度推给渲染层
