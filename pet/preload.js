@@ -32,6 +32,16 @@ contextBridge.exposeInMainWorld('petWindow', {
   onSay(cb) {
     ipcRenderer.on('pet:say', (_e, v) => cb(v))
   },
+  /** 取名：setName('小鲸') / closeRename() / onName(cb) */
+  setName(v) {
+    ipcRenderer.send('pet:set-name', v)
+  },
+  closeRename() {
+    ipcRenderer.send('pet:close-rename')
+  },
+  onName(cb) {
+    ipcRenderer.on('pet:current-name', (_e, n) => cb(n))
+  },
   /** 删除本地数据（配置 + 桌宠本体） */
   clearLocalData() {
     ipcRenderer.send('pet:clear-local-data')
