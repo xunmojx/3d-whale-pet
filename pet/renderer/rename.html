@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>取个名字</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-user-select:none;user-select:none;}
+body{background:#141a2c;color:#fff;font-family:system-ui,"PingFang SC","Microsoft YaHei",sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden;padding:0 16px;}
+#titlebar{display:flex;align-items:center;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.08);-webkit-app-region:drag;margin:0 -16px;padding-left:16px;padding-right:16px;}
+#titlebar .label{flex:1;font-size:13px;}
+#titlebar button{width:22px;height:22px;border:none;border-radius:5px;background:transparent;color:rgba(255,255,255,.6);cursor:pointer;font-size:13px;-webkit-app-region:no-drag;}
+#titlebar button:hover{background:rgba(255,100,100,.6);color:#fff;}
+#tip{margin-top:14px;font-size:12px;color:rgba(255,255,255,.55);line-height:1.6;}
+#name{margin-top:12px;width:100%;padding:10px 12px;border-radius:9px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:#fff;font:inherit;font-size:14px;outline:none;}
+#name:focus{border-color:#4d6bfe;background:rgba(77,107,254,.10);}
+#counter{margin-top:6px;font-size:11px;color:rgba(255,255,255,.35);text-align:right;}
+#buttons{margin-top:auto;padding:16px 0;display:flex;gap:10px;}
+#buttons button{flex:1;padding:10px;border:none;border-radius:9px;font:inherit;font-size:13px;cursor:pointer;}
+#save{background:#4d6bfe;color:#fff;}
+#save:hover{background:#5a78ff;}
+#clear{background:rgba(255,255,255,.08);color:rgba(255,255,255,.75);}
+#clear:hover{background:rgba(255,255,255,.14);}
+</style>
+</head>
+<body>
+<div id="titlebar">
+  <span class="label">🏷️ 给我取个名字</span>
+  <button id="close-btn" title="关闭">✕</button>
+</div>
+<div id="tip">取个名字吧，它会记住。留空就是默认的「虎鲸桌宠」。</div>
+<input id="name" maxlength="12" placeholder="比如：小鲸、阿鲸、老板" autocomplete="off" spellcheck="false">
+<div id="counter">0 / 12</div>
+<div id="buttons">
+  <button id="clear">清空</button>
+  <button id="save">保存</button>
+</div>
+<script>
+(function () {
+  var api = Object.assign({}, window.petBridge || {}, window.petWindow || {});
+  var input = document.getElementById('name');
+  var counter = document.getElementById('counter');
+
+  function refresh() {
+    counter.textContent = input.value.length + ' / 12';
+  }
+  input.addEventListener('input', refresh);
+
+  document.getElementById('close-btn').onclick = function () {
+    if (api.closeRename) api.closeRename();
+  };
+
+  document.getElementById('clear').onclick = function () {
+    input.value = '';
+    refresh();
+    input.focus();
+  };
+
+  function save() {
+    var v = input.value.trim();
+    if (api.setName) api.setName(v);
+    if (api.closeRename) api.closeRename();
+  }
+  document.getElementById('save').onclick = save;
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') save();
+    if (e.key === 'Escape' && api.closeRename) api.closeRename();
+  });
+
+  // 打开时填入当前名字
+  if (api.onName) {
+    api.onName(function (n) {
+      input.value = n || '';
+      refresh();
+      input.focus();
+      input.select();
+    });
+  } else {
+    input.focus();
+  }
+})();
+</script>
+</body>
+</html>
