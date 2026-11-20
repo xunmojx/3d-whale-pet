@@ -8,7 +8,7 @@
 # 千万不要再把这行抄进 profile 的 `cordis.patch.yml`：那样同一个插件会被挂载
 # 两次，浏览器端会执行两遍 client bundle，DSH 的 client-modules 对同 id 的
 # 第二次注册会直接抛
-#   client-modules: duplicate factory registration for "3d-whale-pet"
+#   client-modules: duplicate factory registration for "dsh-3d-whale-pet"
 # 整个客户端半边（侧边栏按钮）就都不激活了。这正是 issue #2 里第一个问题的成因。
 #
 # ── name 的相对基准 ──────────────────────────────────────────────
