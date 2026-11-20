@@ -1,0 +1,5 @@
+... const winW = () => Math.round(WINDOW_WIDTH * sizeScale)
+...  const nx = Math.round(cx + ux * step - winW() / 2)
+...       if (nx !== Math.round(cx - winW() / 2) || ny !== Math.round(cy - winH() / 2)) {
+... const inPanel = panelOpen && rel.cx >= -winW() / 2 && rel.cx <= -winW() / 2 + 92
+...     const w = winW(), h = winH()
