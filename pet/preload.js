@@ -155,6 +155,9 @@ contextBridge.exposeInMainWorld('petBridge', {
   onAudioFreq(cb) {
     ipcRenderer.on('pet:audio-freq', (_e, data) => cb(data))
   },
+  onBeat(cb) {
+    ipcRenderer.on('pet:beat', (_e, gap) => cb(gap))
+  },
   onMusicComment(cb) {
     ipcRenderer.on('pet:music-comment', (_e, name) => cb(name))
   },
@@ -165,8 +168,20 @@ contextBridge.exposeInMainWorld('petBridge', {
   sendAudioFreq(data) {
     ipcRenderer.send('pet:audio-freq', data)
   },
+  // 播放器侧算好了节拍就直接发一拍，省得把整条频谱搬过去再算一遍
+  sendBeat(gapMs) {
+    ipcRenderer.send('pet:beat', gapMs)
+  },
   musicComment(name) {
     ipcRenderer.send('pet:music-comment', name)
+  },
+  // 打开系统文件对话框选音频，返回绝对路径数组
+  pickAudio() {
+    return ipcRenderer.invoke('pet:pick-audio')
+  },
+  // 拿系统声音的桌面源 id（用于监听别的软件在放什么）
+  desktopAudioSource() {
+    return ipcRenderer.invoke('pet:desktop-audio-source')
   },
   minimizePlayer() {
     ipcRenderer.send('pet:minimize-player')
