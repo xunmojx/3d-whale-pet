@@ -930,37 +930,21 @@
             window.__petSetSkin = setSkin;
             window.__petSetCustomSkin = setCustomSkin;
 
-            // 体型是靠「窗口变大」实现的，但相机高度（fov）固定，
-            // 窗口一高模型在画面里反而显得更小、周围全是空白，
-            // 气泡就会离头顶老远。所以相机要按窗口高度等比拉近，
-            // 让模型始终占满同样的相对比例。
-            const CAM_BASE = new THREE.Vector3(3.6, 2.3, 5.4);
-            const CAM_BASE_H = 400, CAM_REF = 1.0;
-            const CAM_MEDIUM_PX = 90;   // 中号（400px 窗口）下模型占的像素高；整体缩小约 10%
+            // 体型就是「窗口变大」：相机固定，窗口高一倍，模型在屏幕上占的像素就高一倍。
+            // 中间试过用 zoom 反推尺寸，结果游动时包围盒变化会让模型忽大忽小，已经撤掉。
+            const CAM_BASE = new THREE.Vector3(3.6, 2.3, 5.4);   // 相机基准机位
+            const MODEL_ZOOM = 1.25;   // 整体大小旋钮：调大就更近、模型更大
             function fitCamera() {
                 camera.aspect = innerWidth / innerHeight;
-                // 别再靠公式猜了：直接量模型投影出来的像素，再反推 zoom。
-                // 目标是「视觉大小 = 中号的 k^0.6 倍」，这样小号不会缩没、特大也不会撑爆。
-                camera.aspect = innerWidth / innerHeight;
-                camera.position.copy(CAM_BASE);
-                camera.zoom = 1;
+                camera.position.copy(CAM_BASE).multiplyScalar(1 / MODEL_ZOOM);
                 camera.lookAt(0, 0, 0);
                 camera.updateProjectionMatrix();
                 renderer.setSize(innerWidth, innerHeight);
-
-                try {
-                    const k = Math.min(3, Math.max(0.4, innerHeight / CAM_BASE_H));
-                    const targetPx = CAM_MEDIUM_PX * k;   // 线性：菜单里 .7/1/1.35/1.7，画面就按这个比例
-                    const box = new THREE.Box3().setFromObject(petGroup);
-                    const mn = box.min.clone().project(camera);
-                    const mx = box.max.clone().project(camera);
-                    const nowPx = Math.abs(mx.y - mn.y) / 2 * innerHeight;
-                    if (nowPx > 1) {
-                        camera.zoom = Math.min(5, Math.max(0.2, targetPx / nowPx));
-                        camera.updateProjectionMatrix();
-                    }
-                } catch (e) { /* 量不到就保持 zoom=1 */ }
             }
+            window.__petFitCamera = fitCamera;
+            window.addEventListener('resize', fitCamera);
+            fitCamera();
+
             // 头顶在屏幕上的坐标（气泡定位用）：3D 对象只在本段作用域可见，
             // 气泡在另一段 IIFE 里，只能通过这个钩子拿。
             window.__petProjectHead = function () {
@@ -979,13 +963,9 @@
             };
             window.__petMeasureModel = function () {
                 try {
-                    const box = new THREE.Box3().setFromObject(petGroup);
-                    const mn = box.min.clone().project(camera);
-                    const mx = box.max.clone().project(camera);
-                    return {
-                        winH: innerHeight,
-                        modelPx: Math.round(Math.abs(mx.y - mn.y) / 2 * innerHeight),
-                    };
+                    const top = petGroup.localToWorld(new THREE.Vector3(0, bb.max.y, 0)).project(camera);
+                    const bot = petGroup.localToWorld(new THREE.Vector3(0, bb.min.y, 0)).project(camera);
+                    return { winH: innerHeight, modelPx: Math.round(Math.abs(top.y - bot.y) / 2 * innerHeight) };
                 } catch (e) { return { err: String(e) }; }
             };
             window.__petFitCamera = fitCamera;
@@ -1421,8 +1401,13 @@
                     // 气泡底边贴在头顶上方。留白按窗口高度算：小体型窗口矮，
                     // 固定 8px 会被背鳍戳进来，看着就是「气泡压着鱼鳍」。
                     const gapPx = Math.max(12, Math.round(window.innerHeight * 0.055));
+                    const bottom = Math.round(ty - gapPx);
+                    // 小体型窗口矮，长回复（最大 220px 高）会顶出窗口上沿被裁掉。
+                    // 先按「头顶以上还剩多少空间」收窄气泡高度，再定位，就不会裁。
+                    const avail = Math.max(24, bottom - 2);   // 不能用固定下限，否则小窗口还是会顶出上沿
+                    bubble.style.maxHeight = Math.min(220, avail) + 'px';
                     bubble.style.transform = 'translate(-50%, -100%)';
-                    bubble.style.top = Math.round(Math.max(2, ty - gapPx)) + 'px';
+                    bubble.style.top = Math.max(2, bottom) + 'px';
                 }
             }
 
