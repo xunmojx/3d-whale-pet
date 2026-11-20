@@ -1,0 +1,38 @@
+function openHelpPanel() {
+  if (helpWin && !helpWin.isDestroyed()) { helpWin.focus(); return; }
+  helpWin = new BrowserWindow({
+    width: 360,
+    height: 500,
+    resizable: false,
+    frame: false,
+    alwaysOnTop: true,
+    backgroundColor: '#141a2c',
+    title: '帮助',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+  helpWin.loadFile(path.join(__dirname, 'renderer', 'help.html'))
+  helpWin.on('closed', () => { helpWin = null })
+}
+
+// ==================== gateway 客户端 ====================
+// 协议细节全部封装在 gateway.js（鉴权 Cookie / RPC 路径 / WS mux），此处只关心业务。
+
+let sessionId = null
+let connected = false
+let lastEventAt = 0
+let mood = 'idle'
+let idleTimer = null
+const moodListeners = []
+/** 最近一次解析 DSH 地址时试过的候选，连不上时点名用。 */
+let lastTriedUrls = []
+
+let gateway = null
+
+function pushMood(next) {
+  if (mood
+
+(未找到 winW)
