@@ -1,0 +1,53 @@
+它欢快扑腾一下，然后说一句话。</p>
+  <p>游戏期间它换了一套台词：吃到鱼会说「好吃！」「再来一条」「嗯……鲜」这类；点它会说「别闹，我在捕猎」；蹭它会说「等我吃完嘛」。平时那 14 句闲聊在游戏里不会被调用。</p>
+  <p><b>右键点任意位置退出游戏</b>。</p>
+  <p>注意：游戏期间那层全屏透明层会接管鼠标点击，桌面上的东西暂时点不到（退出就恢复）。小虎鲸自己也完全让开鼠标，点它身上也是投鱼。</p>
+
+  <h3>💬 派活</h3>
+  <p><b>⚠️ 派活是真的调用模型，会花钱。</b>你在输入框里打的字，会作为一条真实消息发进 <b>DSH 当前打开的那个会话</b>——消耗 token，并且计入那段对话的上下文；模型的回复再流式回到气泡里显示。</p>
+  <p>也就是说，它更像「用鲸鱼当输入框发消息」，而不是和一只宠物闲聊。想聊天建议还是回 DSH 里打（气泡最宽 252px，长回复读起来很累）。</p>
+  <p>而它自己主动说的话——30~70 秒的闲聊、被摸时的「再摸摸嘛」、点击时的「摸鱼中，别打扰我」——都是本地写死的台词，<b>一句都不消耗 token</b>。</p>
+  <p>单击鲸鱼 → 输入一句话，虎鲸会把它派给 dsh harness 并流式回显结果。</p>
+  <p>消息会发送到 <b>harness 当前打开的窗口</b>（即最近在聊的那个会话），切窗口时自动跟随。需先启动 dsh；DSH 桌面版<b>每次启动的端口都是随机的</b>，所以地址由插件自动传递 / 发现：从侧边栏启动时由插件直接传 <code>WHALE_PET_URL</code>，手动 <code>npm start</code> 时读发现文件 <code>%DSH_HOME%/cache/whale-pet-dsh-url.json</code>。想显式覆盖就设 <code>WHALE_PET_URL</code>。</p>
+  <p>新版 dsh 需要鉴权，桌宠会自动读取 <code>~/.dsh/.credentials.yaml</code> 的密钥签发会话 Cookie，无需手动配置。</p>
+  <h3>🗑️ 删除本地数据</h3>
+  <p>卸载插件<b>不会</b>删掉你在这里的东西——体型、皮肤、跳舞强度、跟随和漫游开关都存在
+    <code>%APPDATA%\whale-pet-app\whale-pet-config.json</code>，重装之后还是上次的样子。</p>
+  <p>如果你打算彻底不要它了，点下面的按钮。这会删掉<b>配置和 180MB 的桌宠本体</b>，
+    之后插件仍然装着但启动不了，重装也得重新下载、不再记得原来的设置。</p>
+  <p><button id="wipe-btn" style="margin-top:4px;padding:8px 14px;border-radius:8px;border:1px solid rgba(220,80,80,.55);background:rgba(220,80,80,.12);color:#c0392b;font:inherit;font-size:13px;cursor:pointer">删除本地数据</button>
+     <span id="wipe-msg" style="margin-left:10px;font-size:13px;color:#888"></span></p>
+</div>
+<script>
+(function(){
+  var api = window.petBridge || {};
+  document.getElementById('close-btn').onclick = function(){ if (api.closePanel) api.closePanel(); };
+  var btn = document.getElementById('wipe-btn');
+  var msg = document.getElementById('wipe-msg');
+  if (btn) btn.onclick = function () {
+    if (btn.dataset.armed !== '1') {
+      btn.dataset.armed = '1';
+      btn.textContent = '真的删？再点一次';
+      msg.textContent = '配置和 180MB 本体都会被删掉';
+      setTimeout(function () {
+        if (btn.dataset.armed === '1') {
+          btn.dataset.armed = '';
+          btn.textContent = '删除本地数据';
+          msg.textContent = '';
+        }
+      }, 6000);
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = '正在删除…';
+    if (api.clearLocalData) api.clearLocalData();
+  };
+  if (api.onClearDataResult) api.onClearDataResult(function (r) {
+    if (!btn) return;
+    btn.textContent = '已删除';
+    msg.textContent = (r && r.ok) ? '本地数据已清空，重装后会是全新的' : ('删除失败：' + (r && r.error || '未知错误'));
+  });
+})();
+</script>
+</body>
+</html>
