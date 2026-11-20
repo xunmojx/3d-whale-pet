@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3D 小虎鲸 · DSH 桌宠</title>
+<meta name="description" content="一只透明置顶的 3D 虎鲸，常驻在 DSH 用户的桌面上：跟着鼠标游、自己溜达、翻身打盹、被摸会眯眼。">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+    :root {
+        --blue: #4d6bfe;
+        --blue-soft: #7b93ff;
+        --ink: #0e1330;
+        --bg: #070a18;
+        --card: rgba(255, 255, 255, 0.055);
+        --line: rgba(255, 255, 255, 0.10);
+        --muted: rgba(226, 232, 255, 0.62);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+        background: var(--bg);
+        color: #eef1ff;
+        font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+        line-height: 1.75;
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+    }
+
+    /* 背景：一点星尘和一颗偏蓝的光 */
+    body::before {
+        content: '';
+        position: fixed;
+        inset: -20% -10% auto -10%;
+        height: 90vh;
+        background:
+            radial-gradient(52% 46% at 26% 18%, rgba(77, 107, 254, 0.30), transparent 70%),
+            radial-gradient(38% 34% at 82% 8%, rgba(123, 147, 255, 0.18), transparent 70%);
+        pointer-events: none;
+        z-index: 0;
+    }
+    body::after {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background-image:
+            radial-gradient(1px 1px at 12% 22%, rgba(255,255,255,0.55), transparent),
+            radial-gradient(1px 1px at 38% 62%, rgba(255,255,255,0.32), transparent),
+            radial-gradient(1px 1px at 71% 31%, rgba(255,255,255,0.45), transparent),
+            radial-gradient(1px 1px at 88% 74%, rgba(255,255,255,0.30), transparent),
+            radial-gradient(1px 1px at 55% 12%, rgba(255,255,255,0.40), transparent);
+        pointer-events: none;
+        z-index: 0;
+    }
+
+    .wrap { position: relative; z-index: 1; max-width: 960px; margin: 0 auto; padding: 0 28px; }
+
+    /* ---------- 首屏 ---------- */
+    header { padding: 84px 0 40px; text-align: center; }
+
+    .whale {
+        width: min(420px, 74vw);
+        filter: drop-shadow(0 26px 60px rgba(77, 107, 254, 0.45));
+        animation: float 6.5s ease-in-out infinite;
+    }
+    @keyframes float {
+        0%, 100% { transform: translateY(0) rotate(-1deg); }
+        50%      { transform: translateY(-14px) rotate(1deg); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .whale { animation: none; }
+    }
+
+    h1 {
+        margin-top: 18px;
+        font-size: clamp(30px, 5vw, 46px);
+        letter-spacing: -0.02em;
+        font-weight: 700;
+    }
+    h1 .dot { color: var(--blue-soft); }
+
+    .lede {
+        margin: 18px auto 0;
+        max-width: 620px;
+        font-size: 17px;
+        color: var(--muted);
+    }
+
+    /* ---------- 安装 ---------- */
+    .install {
+        margin: 42px auto 0;
+        max-width: 660px;
+        text-align: left;
+    }
+    .install-label {
+        font-size: 12.5px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 10px;
+    }
+    .cmd {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: rgba(10, 14, 34, 0.72);
+        border: 1px solid var(--line);
+        border-radius: 13px;
+        padding: 15px 16px;
+        font-family: ui-monospace, SFMono-Regular, "Cascadia Code", Consolas, monospace;
+        font-size: 14px;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+    .cmd .prompt { color: var(--blue-soft); user-select: none; }
+    .cmd code { color: #dfe5ff; }
+    .copy {
+        margin-left: auto;
+        flex: none;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.06);
+        color: #dfe5ff;
+        font: inherit;
+        font-size: 12.5px;
+        padding: 6px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s;
+    }
+    .copy:hover { background: rgba(77, 107, 254, 0.25); border-color: rgba(123, 147, 255, 0.5); }
+    .copy.done { background: rgba(70, 200, 140, 0.22); border-color: rgba(70, 200, 140, 0.5); }
+
+    .alt {
+        margin-top: 14px;
+        font-size: 14.5px;
+        color: var(--muted);
+    }
+    .alt a { color: var(--blue-soft); text-decoration: none; border-bottom: 1px solid rgba(123, 147, 255, 0.35); }
+    .alt a:hover { border-bottom-color: var(--blue-soft); }
+
+    /* ---------- 功能 ---------- */
+    section { padding: 76px 0 8px; }
+    h2 {
+        font-size: 13px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--muted);
+        font-weight: 600;
+        margin-bottom: 24px;
+    }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(232px, 1fr)); gap: 14px; }
+
+    .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 20px 20px 18px;
+        transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+    }
+    .card:hover {
+        transform: translateY(-3px);
+        border-color: rgba(123, 147, 255, 0.42);
+        background: rgba(77, 107, 254, 0.09);
+    }
+    .card .ico { font-size: 20px; }
+    .card h3 { font-size: 15.5px; margin: 8px 0 6px; font-weight: 650; }
+    .card p { font-size: 14px; color: var(--muted); line-height: 1.7; }
+
+    /* ---------- 更新日志 ---------- */
+    .log { border-left: 2px solid var(--line); padding-left: 24px; }
+    .entry { position: relative; padding-bottom: 30px; }
+    .entry:last-child { padding-bottom: 0; }
+    .entry::before {
+        content: '';
+        position: absolute;
+        left: -30px;
+        top: 8px;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--blue);
+        box-shadow: 0 0 0 4px rgba(77, 107, 254, 0.18);
+    }
+    .entry .ver { font-weight: 650; font-size: 15.5px; }
+    .entry .when { color: var(--muted); font-size: 13px; margin-left: 10px; font-weight: 400; }
+    .entry ul { margin: 10px 0 0 18px; color: var(--muted); font-size: 14px; }
+    .entry li { margin: 3px 0; }
+
+    /* ---------- 页脚 ---------- */
+    footer {
+        margin-top: 84px;
+        padding: 30px 0 48px;
+        border-top: 1px solid var(--line);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 18px;
+        align-items: center;
+        justify-content: space-between;
+        color: var(--muted);
+        font-size: 13.5px;
+    }
+    footer a { color: var(--muted); text-decoration: none; }
+    footer a:hover { color: #eef1ff; }
+    footer .links { display: flex; gap: 20px; }
+
+    .tip {
+        margin-top: 18px;
+        font-size: 13px;
+        color: rgba(226, 232, 255, 0.45);
+    }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+    <header>
+        <img class="whale" src="whale.png" alt="3D 小虎鲸">
+        <h1>3D 小虎鲸<span class="dot">.</span></h1>
+        <p class="lede">
+            一只透明置顶的 3D 虎鲸，常驻在你的桌面上。它会跟着鼠标游，头一直朝着你的箭头；
+            你不动它，它就自己溜达、翻跟头、打个盹；你把手放它头上蹭两下，它会眯起眼睛冒一屏爱心。
+        </p>
+
+        <div class="install">
+            <div class="install-label">安装</div>
+            <div class="cmd">
+                <span class="prompt">$</span>
+                <code id="cmd">https://gitee.com/in-search-of-ink/3d-whale-pet/raw/master/3d-whale-pet.tgz</code>
+                <button class="copy" id="copyBtn" type="button">复制</button>
+            </div>
+            <p class="alt">
+                把上面这条链接粘进 DSH 插件面板的安装框即可。
+                装好之后在插件面板点「启动」——第一次会提示下载桌宠本体（约 180 MB），之后离线可用。
+            </p>
+        </div>
+    </header>
+
+    <section>
+        <h2>它会做什么</h2>
+        <div class="grid">
+            <div class="card">
+                <div class="ico">🐭</div>
+                <h3>跟着鼠标游</h3>
+                <p>朝你的箭头游过来，停在手边一掌远；靠近时会减速，不是硬停在某个点。</p>
+            </div>
+            <div class="card">
+                <div class="ico">👀</div>
+                <h3>头一直朝你</h3>
+                <p>光标越过 90° 就真的转过头，不会倒着游。手贴到脸上时它会正对屏幕看你。</p>
+            </div>
+            <div class="card">
+                <div class="ico">🧭</div>
+                <h3>自己溜达</h3>
+                <p>鼠标静下来十秒，它就去窗边逛一圈；逛累了翻个跟头，或者闭眼睡三十秒。</p>
+            </div>
+            <div class="card">
+                <div class="ico">💗</div>
+                <h3>被摸会开心</h3>
+                <p>在脑袋上蹭三次，它会眯成笑眼、抖抖身子、冒一屏爱心，然后说句话。</p>
+            </div>
+            <div class="card">
+                <div class="ico">🐟</div>
+                <h3>大鱼吃小鱼</h3>
+                <p>菜单里开一局，点屏幕任意位置投鱼，它会加速追着吃。游戏期间换一套台词。</p>
+            </div>
+            <div class="card">
+                <div class="ico">🎨</div>
+                <h3>换皮肤 / 换体型</h3>
+                <p>五种配色、四档体型，还能自己调深浅两色。选过的会记住，下次启动还是它。</p>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <h2>更新日志</h2>
+        <div class="log">
+            <div class="entry">
+                <div class="ver">0.3.0<span class="when">最新</span></div>
+                <ul>
+                    <li>右键菜单改成自绘窗口：贴右侧弹出、垂直居中，点空白或 Esc 收起</li>
+                    <li>皮肤和跳舞强度会记住，下次启动保留</li>
+                    <li>尾巴改成整条弯曲：身体尾段和尾鳍一起动，不再脱节</li>
+                    <li>只在游动时摆尾，静止保留轻微浮动；下压比上抬重</li>
+                    <li>启动先居中停一秒再动，头固定朝左</li>
+                    <li>修掉跟随鼠标时左右速度不一致（DPI 取整导致）</li>
+                    <li>游戏中吃鱼会说「好吃！」，并换了一整套游戏台词</li>
+                </ul>
+            </div>
+            <div class="entry">
+                <div class="ver">0.2.0</div>
+                <ul>
+                    <li>加入「大鱼吃小鱼」小游戏</li>
+                    <li>加入换皮肤、播放器、余额查询</li>
+                    <li>点击穿透按模型真实轮廓判定</li>
+                </ul>
+            </div>
+            <div class="entry">
+                <div class="ver">0.1.0</div>
+                <ul>
+                    <li>第一版：跟随、漫游、待机、摸摸、说话气泡</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <h2>来源与许可</h2>
+        <p style="color: var(--muted); font-size: 14px; max-width: 680px;">
+            本项目基于 <a href="https://github.com/elyoncatnecoe/whale-pet" style="color: var(--blue-soft);">elyoncatnecoe/whale-pet</a>（MIT）二次开发，
+            在原作基础上重做了朝向系统，并新增了自主漫游、待机翻滚与睡觉、被摸反应、闲聊气泡等功能，
+            同时从原网页工程拆分成了独立的 DSH 插件。MIT License，保留原作者署名。
+        </p>
+    </section>
+
+    <footer>
+        <div>MIT License · 用 three.js 和 Electron 做的</div>
+        <div class="links">
+            <a href="https://gitee.com/in-search-of-ink/3d-whale-pet">GitHub</a>
+            <a href="https://gitee.com/in-search-of-ink/3d-whale-pet/issues">反馈问题</a>
+            <a href="https://gitee.com/in-search-of-ink/3d-whale-pet/releases">下载 .tgz</a>
+        </div>
+    </footer>
+
+</div>
+
+<script>
+    (function () {
+        const btn = document.getElementById('copyBtn');
+        const cmd = document.getElementById('cmd');
+        btn.addEventListener('click', async () => {
+            const text = cmd.textContent.trim();
+            try {
+                await navigator.clipboard.writeText(text);
+            } catch {
+                // 老浏览器 / 非 https：退化到选中
+                const range = document.createRange();
+                range.selectNodeContents(cmd);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+                document.execCommand && document.execCommand('copy');
+            }
+            btn.textContent = '已复制';
+            btn.classList.add('done');
+            setTimeout(() => { btn.textContent = '复制'; btn.classList.remove('done'); }, 1600);
+        });
+    })();
+</script>
+</body>
+</html>
