@@ -1,0 +1,26 @@
+# 3D小虎鲸的 bundle patch（DSH 通过 package.json 的 dsh.bundle.patch 找到本文件）。
+#
+# 用 insert: 包裹（裸 `- id:` 只会覆盖已有行，对不存在的 id 会报
+# patch: entry "..." not found）。
+#
+# ── 加载方式：只此一条，别再手抄 ────────────────────────────────
+# 本文件由 profile 的 `dsh.profile.bundles` 自动加载（DSH 会按包名找到它）。
+# 千万不要再把这行抄进 profile 的 `cordis.patch.yml`：那样同一个插件会被挂载
+# 两次，浏览器端会执行两遍 client bundle，DSH 的 client-modules 对同 id 的
+# 第二次注册会直接抛
+#   client-modules: duplicate factory registration for "3d-whale-pet"
+# 整个客户端半边（侧边栏按钮）就都不激活了。这正是 issue #2 里第一个问题的成因。
+#
+# ── name 的相对基准 ──────────────────────────────────────────────
+# DSH 0.2.x 的 loader 在读 patch 时会把 insert 行里以 `./`、`../` 或绝对路径
+# 开头的 name 改写成「相对**本 patch 文件所在目录**」的 file:// URL
+# （dsh-app-boot 的 anchorInsertedPluginNames）。所以基准永远是这份文件所在的
+# dsh-plugin/，与 profile 目录、启动方式都无关——这也是为什么同一个字符串在
+# 「插件管理器启用」和「启动时 bundle 层加载」两条路上表现一致。
+# 前提是不要把这行搬到别的 patch 文件里（搬了基准就跟着变）。
+#
+# 必须指到具体 .js 文件：Node 的 ESM 解析不支持目录导入（会报
+# ERR_UNSUPPORTED_DIR_IMPORT）。
+- insert:
+    - id: 3d-whale-pet
+      name: "./lib/index.js"
