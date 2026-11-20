@@ -1,0 +1,27 @@
+427: (function () {
+431: })();
+762: })();
+946: (function () { try { const v = parseFloat(localStorage.getItem('pet_dance_freq')); if (isFinite(v)) danceFreq 
+1230: })();
+1234: })();
+1238: (function () {
+1239: const bubble = document.createElement('div');
+1271: setTimeout(function () {
+1281: setTimeout(function () { d.remove(); }, 1800);
+1288: function show(text, ms) {
+1295: if (ms) bubbleTimer = setTimeout(function () { bubble.classList.remove('show'); }, ms);
+1337: idleChatTimer = setTimeout(function () {
+1413: if (soundCtx && soundCtx.state === 'suspended') soundCtx.resume().catch(function () {});
+1496: zzzTimer = setInterval(function () { if (sleeping) spawnZzz(); }, 2200);
+1515: setInterval(function () {
+1536: setTimeout(function () { d.remove(); }, 1000);
+1540: setTimeout(function () {
+1550: setTimeout(function () { d.remove(); }, 1600);
+1565: setTimeout(function () { d.remove(); }, 2600);
+1587: })();
+1591: (function () {
+1628: })();
+1690: setInterval(function () {
+1976: window.petWindow.onSay(function (v) {
+1992: window.petWindow.onFishEaten(function () {
+2037: })();
