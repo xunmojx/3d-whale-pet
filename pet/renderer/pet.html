@@ -436,13 +436,14 @@
             material.onBeforeCompile = (sh) => {
                 sh.uniforms.uMR = { value: mrTex };
                 sh.uniforms.uMin = { value: bb.min.x };
+                sh.uniforms.uNod = { value: 0 };   // 点头：只把头部顶点上下挪
                 sh.uniforms.uMax = { value: bb.max.x };
                 sh.uniforms.uDark = { value: new THREE.Color(currentSkin.dark) };
                 sh.uniforms.uWhite = { value: new THREE.Color(currentSkin.white) };
                 bodyUniforms = sh.uniforms;
                 sh.vertexShader = sh.vertexShader
-                    .replace('#include <common>', '#include <common>\nvarying vec3 vPos;')
-                    .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPos = position;');
+                    .replace('#include <common>', '#include <common>\nvarying vec3 vPos;\nuniform float uNod;\nuniform float uMin;\nuniform float uMax;')
+                    .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPos = position;\n{ float uu2 = clamp((position.x - uMin) / (uMax - uMin), 0.0, 1.0); float headMask = 1.0 - smoothstep(0.20, 0.74, uu2); if (headMask > 0.001) { float piv = uMin + (uMax - uMin) * 0.52; float ang = uNod * headMask; float cc = cos(ang); float sn = sin(ang); vec2 pp = vec2(transformed.x - piv, transformed.y); transformed.x = piv + pp.x * cc - pp.y * sn; transformed.y = pp.x * sn + pp.y * cc; } }');
                 sh.fragmentShader = sh.fragmentShader
                     .replace('#include <common>', '#include <common>\nvarying vec3 vPos;\nuniform sampler2D uMR;\nuniform float uMin, uMax;\nuniform vec3 uDark;\nuniform vec3 uWhite;')
                     .replace('#include <color_fragment>', `#include <color_fragment>
@@ -469,6 +470,14 @@
             };
             const model = new THREE.Mesh(geo, material);
             // 整体缩小到 50%（作为桌宠不需要网页那么大的尺寸）；父分组缩放不影响 model 自身的浮动/旋转/呼吸
+            // 头部挂件（眼斑、眼球、背鳍）要跟着身体网格的「头」一起转。
+            // 身体网格是顶点着色器在转，这些独立 mesh 只能靠父级 Group 转，
+            // 所以给它们建一个以脖子为轴心的组，旋转就自然绕轴了。
+            const HEAD_PIVOT_U = 0.52;   // 轴心位置：0 头 → 1 尾，0.56 在眼睛后面
+            const HEAD_PIVOT_X = bb.min.x + (bb.max.x - bb.min.x) * HEAD_PIVOT_U;
+            const headGroup = new THREE.Group();
+            headGroup.position.x = HEAD_PIVOT_X;
+            model.add(headGroup);
             const petGroup = new THREE.Group();
             petGroup.scale.setScalar(CONFIG.MODEL_SCALE);
             petGroup.add(model);
@@ -519,7 +528,8 @@
             const browGroup = new THREE.Group();
             browGroup.add(new THREE.Mesh(buildBrowMesh(false), browMat));
             browGroup.add(new THREE.Mesh(buildBrowMesh(true), browMat));
-            model.add(browGroup);
+            headGroup.add(browGroup);
+            browGroup.position.x -= HEAD_PIVOT_X;
 
             // 眼球
             const dentPoint = browSvg.reduce((prev,curr)=>(curr.y<prev.y?curr:prev), browSvg[0]);
@@ -555,7 +565,8 @@
                 eyeGroup.add(pivot);
                 eyePivots.push(pivot);
             }
-            model.add(eyeGroup);
+            headGroup.add(eyeGroup);
+            eyeGroup.position.x -= HEAD_PIVOT_X;
 
             // ==================== 尾鳍（保持不变） ====================
             const TAIL_PATH = "M 17.902 4.103 L 22.379 9.998 C 22.435 9.614, 22.507 9.073, 22.499 8.762 C 22.494 8.572, 22.538 8.499, 22.755 8.477 C 23.354 8.408, 23.935 8.244, 24.469 7.950 C 26.019 7.104, 26.644 5.713, 26.791 4.047 C 26.813 3.792, 26.787 3.529, 26.517 3.395 C 26.235 3.257, 26.114 3.520, 25.949 3.653 C 25.892 3.697, 25.845 3.753, 25.797 3.805 C 25.385 4.245, 24.903 4.534, 24.274 4.500 C 23.354 4.448, 22.568 4.737, 21.873 5.441 C 21.726 4.573, 21.235 4.055, 20.489 3.723 C 20.099 3.551, 19.703 3.377, 19.430 3.002 C 19.239 2.735, 19.186 2.437, 19.091 2.143 C 19.030 1.966, 18.970 1.785, 18.766 1.754 C 18.544 1.720, 18.457 1.905, 18.370 2.061 C 18.023 2.695, 17.889 3.395, 17.902 4.103 Z";
@@ -826,7 +837,8 @@
             });
             const dorsalMat = new THREE.MeshBasicMaterial({ color: CONFIG.COLOR_BODY_BLUE, side: THREE.DoubleSide });
             const dorsalFin = new THREE.Mesh(extrudePolygon3D(dorsalPts, CONFIG.DORSAL_THICKNESS, new THREE.Vector3(0, 0, 0), new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0)), dorsalMat);
-            model.add(dorsalFin);
+            headGroup.add(dorsalFin);
+            dorsalFin.position.x -= HEAD_PIVOT_X;
 
             // —— 胸鳍：logo 腹部凸起的轮廓，左右对称各一（包在 pivot 中以便摆动） ——
             const PEC_PATH = "M 16.747 19.267 L 20.614 19.565 C 20.093 19.673, 19.421 19.772, 18.722 19.707 C 17.815 19.630, 17.268 19.526, 16.747 19.267 Z";
@@ -866,6 +878,8 @@
                 pivot.position.copy(Rh);
                 pivot.add(finMesh);
                 model.add(pivot);
+                pivot.userData.baseX = pivot.position.x;
+                pivot.userData.baseY = pivot.position.y;
                 pecFins.push(pivot);
             }
 
@@ -943,6 +957,22 @@
             let hoverActive = false, clickBoost = 0, danceLevel = 0; // danceLevel: 音乐频谱驱动（温和）
             let beatPulse = 0, spinRemaining = 0, spinAngle = 0; // 节拍脉冲 / 转圈角度
             let danceFreq = 0.7; // 用户设定的跳舞强度 0-1（0=关闭，1=最强）
+            // ---- 点头（代替原来那种每帧都在抖的小幅摆动）----
+            // 一次点头 = 俯仰角度走一遍 0 → 1 → 0，时长 NOD_SEC。
+            // 强度只控制「连点几下、中间停几拍」，不控制幅度——这样看着才是有节奏的，
+            // 而不是随音量大小抖。
+            let nodPhase = 0;    // 0 = 这一下已经点完；>0 = 正在点头的进度
+            let nodGroupLeft = 0;  // 这一组还要点几下（3~5）
+            let nodGroupWait = 0;  // 组间还要停几拍
+            let nodStartAt = 0;  // 这次点头开始的时刻（performance.now）
+            // 拍间隔要在两个 IIFE 之间共享（动画那边算点头时长，音频回调那边做节拍判定），
+            // 所以挂在 window 上——用闭包变量会跨作用域拿不到。
+            window.__beatGapMs = 500;
+            let nodSec = 0.34;   // 一次点头用时（秒），跟着拍间隔动态调
+            // 固定时长会出问题：拍比点头还密时，上一次没走完就被下一拍重置，
+            // 角度从半路突然跳回起点——那就是鬼畜的来源。
+            const NOD_SEC_MIN = 0.13, NOD_SEC_MAX = 0.62;   // 上下限拉开：慢歌点头更慢、快歌更快
+            const NOD_AMP = 0.26;   // 点头角度（弧度，约 14°）——角度越大，颈部过渡越容易凸
             (function () { try { const v = parseFloat(localStorage.getItem('pet_dance_freq')); if (isFinite(v)) danceFreq = Math.max(0, Math.min(1, v)); } catch (e) {} })();
             let isSleeping = false; // 睡眠状态（闭眼 + 动作减幅）
             document.documentElement.addEventListener('mouseenter', () => { hoverActive = true; });
@@ -1013,6 +1043,7 @@
             }
             function animate() {
                 requestAnimationFrame(animate);
+                window.__rafCount = (window.__rafCount || 0) + 1;
                 const t = clock.getElapsedTime();
                 const dt = Math.min(t - prevT, 0.1); prevT = t;
                 const rate = 0.04;
@@ -1076,7 +1107,6 @@
 
                 // 悬停/单击的 boost；音乐不再放大游动，只做小幅叠加偏移（参考 F:\works）
                 const boost = Math.max(hoverActive ? 0.25 : 0, clickBoost);
-                const d = danceLevel * danceFreq; // 有效跳舞强度（含用户频率设置）
                 const sleepF = isSleeping ? 0.2 : 1; // 睡眠时动作减幅
                 const fMul = 1 + 0.4 * boost;
                 const aMul = 1 + 0.45 * boost;
@@ -1093,24 +1123,36 @@
                     }
                 }
 
-                // 节拍包络（0→1→0），用于打拍子的弹跳/甩尾/扑腾
-                const beatEnv = Math.sin(Math.min(1, beatPulse) * Math.PI);
 
                 // —— 身体：roll(z) + yaw(y) + pitch(x)，yaw 叠加转圈 + 音乐小幅偏移 ——
                 const roll = moodState.bodySway * aMul * sleepF;
-                model.rotation.z = roll * (Math.sin(t * w) + 0.4 * Math.sin(t * w * 2 + 1.3)) + d * 0.05 * Math.sin(t * w * 2 + 1.0) + SWIM.bank;
+                model.rotation.z = roll * (Math.sin(t * w) + 0.4 * Math.sin(t * w * 2 + 1.3)) + SWIM.bank;
                 const yaw = moodState.bodyYaw * aMul * sleepF;
                 // 摆正时的 3D 感：把「头还差多少角度没转到位」耦合一点到绕竖轴的转动上。
                 // 平着转过去是 2D 的，加上这一下就像绕着自己的竖轴拧了一下再摆正 ——
                 // 误差归零它自然回 0，不需要额外的状态机。
                 const swingYaw = Math.max(-0.28, Math.min(0.28, (FACE.tiltTarget - FACE.tilt) * 0.22));
-                model.rotation.y = yaw * (Math.sin(t * w + 0.5) + 0.4 * Math.sin(t * w * 2 + 2.4)) + spinAngle + d * 0.04 * Math.sin(t * w * 1.5 + 0.5) + FACE.yaw + turnYaw + swingYaw;
+                model.rotation.y = yaw * (Math.sin(t * w + 0.5) + 0.4 * Math.sin(t * w * 2 + 2.4)) + spinAngle + FACE.yaw + turnYaw + swingYaw;
                 const pitch = moodState.bodyPitch * aMul * sleepF;
+                // 点头曲线：一次 0 -> 1 -> 0，只在有节拍时才走
+                if (nodPhase > 0) {
+                    // 用墙钟推进：帧率被节流时也要保持 0.22 秒的点头，不会一帧闪过去
+                    nodPhase = (performance.now() - nodStartAt) / (nodSec * 1000);
+                    if (nodPhase >= 1) nodPhase = 0;
+                }
+                const nodCurve = nodPhase > 0 ? Math.sin(nodPhase * Math.PI) : 0;
+                // 音乐响的时候点得稍微用力一点（0.85~1），但节奏完全由节拍决定
+                // 慢歌（nodSec 大）动作幅度再放大一点，快歌收着点——视觉上更容易分辨快慢
+                const slowFactor = Math.min(1.35, Math.max(0.85, nodSec / 0.36));
+                const nodAmp = nodCurve * slowFactor * (0.85 + 0.15 * danceLevel) * (isSleeping ? 0.3 : 1);
+                // 上下点头靠位移：相机是从右前方斜看的，只转 X 轴看着像左右摇头
+                const nodTilt = nodAmp * NOD_AMP;
+                if (bodyUniforms && bodyUniforms.uNod) bodyUniforms.uNod.value = nodTilt;
+                headGroup.rotation.z = nodTilt;   // 眼斑/眼球/背鳍跟着头一起转
                 model.rotation.x = pitch * (Math.sin(t * w + 0.8) + 0.4 * Math.sin(t * w * 2 + 0.3)) + SWIM.pitch + FACE.pitch + idleSpin;
 
                 // —— 漂浮 + 呼吸 + 节拍弹跳（音乐小幅上浮） ——
-                model.position.y = Math.sin(t * moodState.floatSpeed) * moodState.floatAmp * (1 + 0.3 * boost) * (isSleeping ? 0.5 : 1)
-                    + beatEnv * 0.12 * beatPulse * danceFreq + d * 0.06;
+                model.position.y = Math.sin(t * moodState.floatSpeed) * moodState.floatAmp * (1 + 0.3 * boost) * (isSleeping ? 0.5 : 1);
                 const s = 1 + Math.sin(t * moodState.floatSpeed * 1.6) * moodState.breath;
                 model.scale.set(s, s, s);
                 // 朝向鼠标的俯仰放在父分组上：镜像（scale.x 为负）之后再做旋转，
@@ -1119,8 +1161,7 @@
 
                 // —— 尾巴：整条一起上下弯 + 尾巴尖左右摆 + 节拍甩尾 ——
                 const ty = moodState.tailYaw * aMul * sleepF;
-                tailGroup.rotation.y = ty * (Math.sin(t * w + 0.7) + 0.5 * Math.sin(t * w * 2 + 1.9))
-                    + beatEnv * 0.06 * beatPulse * danceFreq;
+                tailGroup.rotation.y = ty * (Math.sin(t * w + 0.7) + 0.5 * Math.sin(t * w * 2 + 1.9));
                 // 上下摆交给整体弯曲（身体尾段 + 尾鳍一起），不再是尾鳍单独翻转。
                 // 幅度做成不对称的：往上收着（55%），往下放开（120%）——
                 // 鲸鱼摆尾本来也是往下压得重、抬头轻，对称摆反而像在打拍子。
@@ -1148,9 +1189,21 @@
 
                 // —— 胸鳍：划水 + 节拍扑腾 ——
                 const pf = moodState.pecFlap * aMul * sleepF;
-                const pecVal = pf * (Math.sin(t * w + 0.6) + 0.5 * Math.sin(t * w * 2 + 1.8))
-                    + beatEnv * 0.15 * beatPulse * danceFreq + d * 0.12 * sleepF;
-                for (const piv of pecFins) piv.rotation.x = pecVal;
+                const pecVal = pf * (Math.sin(t * w + 0.6) + 0.5 * Math.sin(t * w * 2 + 1.8));
+                for (const piv of pecFins) {
+                    piv.rotation.x = pecVal;
+                    // 身体网格在点头时是逐段弯的，胸鳍是独立 mesh，必须按「根部所在的 u」
+                    // 拿到同一个角度，根部才不会和身体错位。
+                    const bx = piv.userData.baseX, by = piv.userData.baseY;
+                    const uuPec = (bx - bb.min.x) / (bb.max.x - bb.min.x);
+                    const tPec = Math.min(1, Math.max(0, (uuPec - 0.30) / (0.64 - 0.30)));
+                    const mPec = 1 - (tPec * tPec * (3 - 2 * tPec));
+                    const angPec = nodTilt * mPec;
+                    const dxPec = bx - HEAD_PIVOT_X;
+                    piv.position.x = HEAD_PIVOT_X + dxPec * Math.cos(angPec) - by * Math.sin(angPec);
+                    piv.position.y = dxPec * Math.sin(angPec) + by * Math.cos(angPec);
+                    piv.rotation.z = angPec;
+                }
 
                 // —— 眨眼 / 睡眠闭眼 / 被摸时眯成笑眼 ——
                 const petting = (window.__petPetting || 0) > performance.now();
@@ -1177,18 +1230,56 @@
                 renderer.render(scene, camera);
             }
             animate();
+            // 自检用：看看点头到底有没有在动
+            window.__petNodState = function () {
+                return { phase: nodPhase, rotX: model.rotation.x, dip: model.position.y, nodU: bodyUniforms && bodyUniforms.uNod ? bodyUniforms.uNod.value : null, freq: danceFreq };
+            };
             window.__petSetMood = setMood;
             window.__petMood = function () { return currentMood; };
             window.__petSetDance = function (lvl) { danceLevel = Math.max(0, Math.min(1, Number(lvl) || 0)); };
             window.__petSetDanceFreq = function (v) {
                 danceFreq = Math.max(0, Math.min(1, Number(v) || 0));
+                nodPhase = 0;   // 换档时把正在点的这一下收掉
                 try { localStorage.setItem('pet_dance_freq', danceFreq); } catch (e) {}
             };
-            window.__petOnBeat = function () {
-                if (danceFreq <= 0) return;
+            window.__petOnBeat = function (lateMs) {
+                // 硬冷却：上游（播放器标记或补拍定时器）偶尔会连发，这里兜底，
+                // 200ms 内只认一次，否则会变成每帧都点（实测 21 次/秒）。
+                const nowMs = performance.now();
+                if (window.__lastBeatMs && nowMs - window.__lastBeatMs < 190) return;   // 再放宽，200 BPM 也不挡
+                window.__lastBeatMs = nowMs;
+                window.__beatCount = (window.__beatCount || 0) + 1;
+                if (!(danceFreq > 0)) return;
                 beatPulse = 1;
                 spawnNote();
-                if (spinRemaining <= 0 && Math.random() < 0.2) spinRemaining = Math.PI * 2; // 约 20% 概率转圈
+
+                // 强度只决定「这一拍点不点」——1.0 每拍都点，往下越来越多漏拍。
+                // 留一点余量：0.75 以上基本都点，避免最高档还停。
+                // 高档：每一拍都点，一直点。
+                // 中/低档：一组 3~5 次连着点，然后停几拍——不会出现「只点一下」。
+                //   中档停 3~5 拍，低档停 6~11 拍。
+                if (danceFreq < 0.99) {
+                    if (nodGroupWait > 0) { nodGroupWait--; return; }
+                    if (nodGroupLeft <= 0) {
+                        nodGroupLeft = 3 + Math.floor(Math.random() * 3);   // 3~5 次
+                    }
+                    nodGroupLeft--;
+                    if (nodGroupLeft <= 0) {
+                        nodGroupWait = danceFreq >= 0.6
+                            ? 3 + Math.floor(Math.random() * 3)             // 中档停 3~5 拍
+                            : 6 + Math.floor(Math.random() * 6);            // 低档停 6~11 拍
+                    }
+                } else {
+                    if (danceFreq <= 0.01) return;
+                }
+                window.__nodCount = (window.__nodCount || 0) + 1;
+                window.__petLastBeatAt = Date.now();   // 跳舞中，待机睡觉要让路
+
+                nodSec = Math.min(NOD_SEC_MAX, Math.max(NOD_SEC_MIN, (window.__beatGapMs / 1000) * 0.72));
+                nodPhase = 1e-4;
+                // 检测和传输要花 50~150ms，把起点往前拨回去，头就落在重音上而不是后面
+                nodStartAt = performance.now() - Math.min(300, Math.max(0, Number(lateMs) || 0));
+                window.__beatTrace = { ok: true, nodSec, gap: window.__beatGapMs };
             };
             // 给桥接层用：窗口内某个像素点是不是落在鲸鱼模型上。
             // 用光线检测而不是固定的椭圆命中区 —— 椭圆比模型大一圈，那一圈就成了
@@ -1544,6 +1635,8 @@
                 return true;
             };
             window.__petIdleSleep = function (ms) {
+                // 正在跟着音乐点头就别睡——5 秒内有点过头就算在跳舞
+                if (window.__petLastBeatAt && Date.now() - window.__petLastBeatAt < 5000) return;
                 if (sleeping) return;
                 setSleeping(true);
                 idleSleepUntil = performance.now() + Math.max(5000, ms);
@@ -2048,27 +2141,65 @@
             }
             // ---- 播放器频谱 → 温和摆动 + 节拍检测（打拍子/转圈/音符） ----
             if (bridge.onAudioFreq) {
-                let bassAvg = 0, lastBeat = 0;
+                // 主窗口只负责两件事：把响度换算成跳舞幅度；以及在长期没有拍的时候补拍。
+                // 节拍本身由播放器判定（它手里有实时频谱），通过 pet:beat 推过来。
+                let lastBeatAt = 0;
+                let audioEnergy = 0;
                 bridge.onAudioFreq((data) => {
+                  try {
                     const arr = Array.isArray(data) ? data : [];
-                    // 连续能量：中高频 → 温和摆动幅度
-                    let sum = 0, n = 0;
-                    for (let i = 8; i < Math.min(48, arr.length); i++) { sum += arr[i]; n++; }
-                    const lvl = n ? Math.min(1, (sum / n) / 140) : 0;
+                    window.__audioFrames = (window.__audioFrames || 0) + 1;
+                    if (!arr.length) return;
+                    // 末尾两位是播放器打的标记：拍点、拍间隔
+                    const n = arr.length >= 66 ? arr.length - 2 : arr.length;
+                    let sum = 0;
+                    for (let i = 0; i < n; i++) sum += arr[i];
+                    const lvl = Math.min(1, (sum / n) / 110);
+                    audioEnergy = lvl;
                     if (window.__petSetDance) window.__petSetDance(lvl);
-                    // 节拍检测：低频能量突增（onset）
-                    let bass = 0;
-                    for (let i = 0; i < 8 && i < arr.length; i++) bass += arr[i];
-                    bass /= 8;
-                    bassAvg = bassAvg * 0.88 + bass * 0.12;
+                    if (arr.length >= 67) {
+                        // 播放器发的是 64 个频点 + 3 个附加位：拍标记 / 拍间隔 / 重音时刻
+                        const isBeat = arr[arr.length - 3];
+                        const gapMs = arr[arr.length - 2];
+                        if (gapMs > 250 && gapMs < 2000) window.__beatGapMs = Math.min(2000, Math.max(280, window.__beatGapMs * 0.7 + gapMs * 0.3));
+                        if (isBeat > 0) {
+                            lastBeatAt = Date.now();
+                            // 播放器把「重音真正发生」的时刻也带了过来
+                            const bt = arr[arr.length - 1];
+                            let late = 0;
+                            if (bt > 1000000000) {
+                                late = Date.now() - bt;
+                                if (!(late > 0 && late < 300)) late = 0;
+                            }
+                            window.__beatLate = late;
+                            if (window.__petOnBeat) window.__petOnBeat(late);
+                        }
+                    }
+
+                  } catch (e) { window.__audioErr = String(e && e.message) + ' @' + (e && e.stack ? e.stack.split('\n')[1] : ''); }
+                });
+
+                if (bridge.onBeat) {
+                    bridge.onBeat((gapMs) => {
+                        const g = Number(gapMs);
+                        if (isFinite(g) && g > 0) window.__beatGapMs = Math.min(2000, Math.max(280, window.__beatGapMs * 0.7 + g * 0.3));
+                        lastBeatAt = Date.now();
+                        if (window.__petOnBeat) window.__petOnBeat();
+                    });
+                }
+
+                // 漏检补拍：某些段落很平（长音、清唱），按当前这首歌的速度接着点
+                setInterval(() => {
+                    if (danceFreq <= 0) return;
+                    if (audioEnergy < 0.02) return;
                     const now = Date.now();
-                    if (bass > bassAvg * 1.5 + 10 && now - lastBeat > 500) {
-                        lastBeat = now;
+                    if (now - lastBeatAt > Math.max(280, window.__beatGapMs) * 1.05) {
+                        lastBeatAt = now;
                         if (window.__petOnBeat) window.__petOnBeat();
                     }
-                });
+                }, 40);
             }
-            if (bridge.onMusicComment) {
+                        if (bridge.onMusicComment) {
                 bridge.onMusicComment((name) => { if (name) window.Pet.say('正在播放：' + name, 3000); });
             }
         })();
