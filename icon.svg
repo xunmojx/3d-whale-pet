@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="3D 小虎鲸">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7b93ff"/>
+      <stop offset="0.55" stop-color="#4d6bfe"/>
+      <stop offset="1" stop-color="#3448cc"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.3" cy="0.22" r="0.75">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="128" height="128" rx="30" fill="url(#bg)"/>
+  <rect width="128" height="128" rx="30" fill="url(#glow)"/>
+
+  <!-- 身体 + 背鳍 + 尾鳍，侧视头朝左 -->
+  <g fill="#ffffff">
+    <path d="M22 74
+             C22 55 38 42 58 42
+             C66 42 73 44 79 48
+             L100 34
+             C97 45 97 55 101 64
+             C93 71 83 73 76 69
+             C71 80 63 85 52 85
+             C34 85 22 81 22 74 Z"/>
+    <!-- 背鳍 -->
+    <path d="M56 44 C58 33 64 26 71 24 C68 31 67 38 68 45 C64 43 60 43 56 44 Z"/>
+    <!-- 胸鳍 -->
+    <path d="M44 82 C46 90 50 95 55 97 C49 99 43 97 39 92 C40 88 42 85 44 82 Z"/>
+  </g>
+
+  <!-- 眼睛 -->
+  <ellipse cx="43" cy="62" rx="4.2" ry="5" fill="#2a3560"/>
+  <circle cx="44.4" cy="60.2" r="1.5" fill="#ffffff"/>
+</svg>
