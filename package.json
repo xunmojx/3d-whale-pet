@@ -1,6 +1,6 @@
 {
   "name": "dsh-3d-whale-pet",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "3D 小虎鲸桌宠：可以跟着鼠标，也可以自己溜达、翻身、打盹，还可以简单互动。",
   "type": "module",
   "main": "lib/index.js",
