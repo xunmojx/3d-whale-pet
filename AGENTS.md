@@ -38,7 +38,7 @@
 ## 发版的时候（他说可以了才做）
 
 1. `package.json` 版本号 +1
-2. `pnpm pack` → 重命名为 `3d-whale-pet.tgz`（固定名）
+2. `pnpm pack` → 重命名为 `dsh-3d-whale-pet.tgz`（固定名）
 3. 推 Gitee（主发布源，国内唯一稳定通道）
 4. **同时**推 GitHub（市场收录 + 版本号对齐）
 5. 两边版本号必须一致，否则市场会显示旧版本
