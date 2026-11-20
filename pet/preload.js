@@ -42,6 +42,10 @@ contextBridge.exposeInMainWorld('petWindow', {
   onName(cb) {
     ipcRenderer.on('pet:current-name', (_e, n) => cb(n))
   },
+  /** 主窗口用：主进程把当前名字同步过来 */
+  onSetName(cb) {
+    ipcRenderer.on('pet:set-name', (_e, n) => cb(n))
+  },
   /** 删除本地数据（配置 + 桌宠本体） */
   clearLocalData() {
     ipcRenderer.send('pet:clear-local-data')
