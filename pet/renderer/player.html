@@ -229,6 +229,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
   // 频谱每 100ms 送一次给主窗口（算跳舞幅度）；
   // 节拍也在这里判——播放器手里有实时 analyser，判完只发一个「拍」过去，比搬整条频谱稳。
   var prevLvl = 0, lastBeatAt = 0, lastDetectAt = 0, smoothGap = 0, sysStream = null, sysSrc = null;
+  var warmupUntil = 0;   // 监听刚开始的预热期，期间不采信任何间隙
   // 判定「这段声音像不像音乐」：说话、视频里的对白没有稳定节拍，低频也薄。
   // 用最近几拍的间隔离散度（cv）和低频占比两个条件一起卡。
   var beatGaps = [], lastBassRatio = 0;
@@ -277,7 +278,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
     var now = Date.now();
     // 冷却至少 300ms（上限 3.3 拍/秒）。之前用 smoothGap*0.55，一旦估到 300ms
     // 就变成 165ms，于是每帧都判成拍，越滚越快。
-    var need = Math.min(1100, Math.max(260, smoothGap * 0.95));   // 约等于一拍：一拍一次，不快也不漏
+    // 还没估出拍速时用 500ms 兜底，否则 smoothGap=0 会让 need 掉到 260ms，
+    // 监听刚开始那一下就是靠这个一路狂点。
+    var gapBase = smoothGap > 0 ? smoothGap : 500;
+    var need = Math.min(1100, Math.max(300, gapBase * 0.95));
     var isBeat = 0;
     var beatAt = 0;
 
@@ -286,13 +290,16 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
     if (lvl > 0.02 && dE > 0.035 + prevLvl * 0.08) {
       var gap = lastDetectAt ? now - lastDetectAt : 0;
       lastDetectAt = now;
-      if (gap > 250 && gap < 1100) {   // 只认 55~240 BPM 的拍间隔
+      if (Date.now() < warmupUntil) { /* 预热期不采信 */ }
+      else if (gap > 270 && gap < 1100) {   // 55~222 BPM；下限放回 270，太快下限会把快歌整段拒掉
         pushBeatGap(gap);
         // 用中位数而不是滑动平均：偶尔被背景音带偏的一两拍会被直接忽略，
         // 歌里变速时也能较快跟上（中位数跟着样本池滚动）。
-        var sorted = beatGaps.slice().sort(function (a, b) { return a - b; });
-        var mid = sorted.length >> 1;
-        smoothGap = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+        if (beatGaps.length >= 3) {
+          var sorted = beatGaps.slice().sort(function (a, b) { return a - b; });
+          var mid = sorted.length >> 1;
+          smoothGap = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+        }
         // 半频校正已经去掉：它会把舒缓的歌误判成「漏了一半拍」，
         // 结果慢歌被砍成一半间隔、点头反而变快——就是你看到的那种颠倒。
         // 现在只靠中位数，宁可偶尔慢一拍，也不要整体错位。
@@ -303,6 +310,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
     //    这样有声音就一定有节奏，不会出现「只听得到偶尔几下」。
     if ((!audio.paused || sysStream) && prevLvl > 0.015 && now - lastBeatAt >= need) {
       lastBeatAt = now;            // 时钟无条件往前推，不然判定一失败就会卡住、然后每帧都发
+      if (now < warmupUntil) { /* 预热期只测不跳 */ }
       if (looksLikeMusic()) {
         isBeat = 1;
         beatAt = now;
@@ -366,6 +374,14 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
         sysSrc = actx.createMediaStreamSource(stream);
         sysSrc.connect(sysAnalyser);   // 只进分析器，不接扬声器
         sysStartedAt = Date.now();
+        // 刚接上 loopback 的头一两秒会冒出一串假的能量跳变，如果不清理，
+        // 中位数会被拉到 250ms 左右，于是开头一阵狂点。这里清空 + 预热 2.5 秒。
+        beatGaps = [];
+        smoothGap = 0;
+        lastDetectAt = 0;
+        lastBeatAt = 0;
+        prevLvl = 0;
+        warmupUntil = Date.now() + 2500;
         el('sys-btn').classList.add('on');
         el('sys-btn').textContent = '🎧 正在监听电脑声音（点一下停止）';
       });
