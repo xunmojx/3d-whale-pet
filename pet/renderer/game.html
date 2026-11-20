@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>大鱼吃小鱼</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; user-select: none; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; cursor: crosshair; }
+
+    .fish {
+        position: absolute;
+        left: 0; top: 0;
+        font-size: 20px;
+        line-height: 1;
+        pointer-events: none;
+        will-change: transform;
+        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.25));
+        transition: opacity 0.15s;
+    }
+
+    /* 吃掉时的水花 */
+    .splash {
+        position: absolute;
+        font-size: 22px;
+        pointer-events: none;
+        animation: splash 0.5s ease-out forwards;
+    }
+    @keyframes splash {
+        0%   { opacity: 1; transform: translate(-50%, -50%) scale(0.6); }
+        100% { opacity: 0; transform: translate(-50%, -50%) scale(1.9); }
+    }
+</style>
+</head>
+<body>
+<script>
+(function () {
+    const bridge = window.petWindow || {};
+    const fishEls = new Map();   // id -> element
+
+
+    // 左键：投一条鱼
+    window.addEventListener('mousedown', function (e) {
+        if (e.button !== 0) return;
+        if (bridge.dropFish) bridge.dropFish(e.screenX, e.screenY);
+    });
+
+    // 右键：退出游戏（不然全屏这层会把桌面所有点击都吃掉）
+    window.addEventListener('contextmenu', function (e) {
+        e.preventDefault();
+        if (bridge.exitGame) bridge.exitGame();
+    });
+
+    // 主进程每帧推来的鱼群位置
+    if (bridge.onFishSync) {
+        bridge.onFishSync(function (list) {
+            const seen = new Set();
+            for (const f of list || []) {
+                seen.add(f.id);
+                let el = fishEls.get(f.id);
+                if (!el) {
+                    el = document.createElement('div');
+                    el.className = 'fish';
+                    el.textContent = '🐟';
+                    el.style.fontSize = (f.size || 20) + 'px';
+                    document.body.appendChild(el);
+                    fishEls.set(f.id, el);
+                }
+                // 朝向跟着游动方向：🐟 这个字形本身朝左，向右游时镜像一下。
+                // 横向速度太小时（几乎在上下窜）保持上一次的朝向，免得来回抖。
+                let flip = el.dataset.flip === '-1' ? -1 : 1;
+                if (Math.abs(f.vx) > 12) flip = f.vx > 0 ? -1 : 1;
+                el.dataset.flip = String(flip);
+                el.style.transform = 'translate(' + (f.x - 10) + 'px,' + (f.y - 10) + 'px) scaleX(' + flip + ')';
+            }
+            for (const [id, el] of fishEls) {
+                if (!seen.has(id)) { el.remove(); fishEls.delete(id); }
+            }
+        });
+    }
+
+    // 吃到鱼了：在鱼的位置画个水花
+    if (bridge.onFishEaten) {
+        bridge.onFishEaten(function (p) {
+            if (!p) return;
+            const s = document.createElement('div');
+            s.className = 'splash';
+            s.textContent = '💦';
+            s.style.left = p.x + 'px';
+            s.style.top = p.y + 'px';
+            document.body.appendChild(s);
+            s.addEventListener('animationend', function () { s.remove(); });
+            setTimeout(function () { s.remove(); }, 700);
+        });
+    }
+})();
+</script>
+</body>
+</html>
