@@ -1,0 +1,65 @@
+{
+  "name": "3d-whale-pet",
+  "version": "0.6.2",
+  "description": "常驻桌面的 3D 小虎鲸：跟着鼠标游、头始终朝箭头，闲了自己溜达、翻身、打盹，被摸会眯眼冒爱心。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json",
+    "./icon": {
+      "default": "./icon.svg"
+    }
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "pet/main.js",
+    "pet/preload.js",
+    "pet/gateway.js",
+    "pet/package.json",
+    "pet/renderer",
+    "README.md",
+    "LICENSE",
+    "icon.svg",
+    "docs"
+  ],
+  "dependencies": {
+    "ws": "^8.21.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots"
+      ],
+      "platform": "web"
+    }
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "whale-pet",
+    "desktop-pet",
+    "electron",
+    "3d",
+    "桌宠",
+    "虎鲸"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/REPLACE_WITH_YOUR_NAME/3d-whale-pet.git"
+  },
+  "homepage": "https://github.com/REPLACE_WITH_YOUR_NAME/3d-whale-pet#readme",
+  "bugs": {
+    "url": "https://github.com/REPLACE_WITH_YOUR_NAME/3d-whale-pet/issues"
+  },
+  "license": "MIT"
+}
