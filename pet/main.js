@@ -925,7 +925,7 @@ let menuCenterY = 0
 /**
  * 这个插件当初是从哪儿装上的。
  * 读 profile 的 package.json 里 dependencies["3d-whale-pet"] 那一条：
- *   github:xunmojx/3d-whale-pet      → 从 GitHub（或插件市场）装的
+ *   github:xunmojx/dsh-3d-whale-pet      → 从 GitHub（或插件市场）装的
  *   https://gitee.com/.../xxx.tgz    → 从 Gitee 的 tarball 装的
  * @returns {string} 空串表示读不到
  */
@@ -1012,8 +1012,8 @@ ipcMain.on('pet:close-rename', () => {
 // ==================== 检查更新 ====================
 // 仓库里放一份 version.json，桌宠启动时悄悄拉一下；比本地新就在菜单顶部提示。
 // 拉不到就算了——网络问题不该打扰用户。
-const UPDATE_URL = 'https://gitee.com/in-search-of-ink/3d-whale-pet/raw/master/version.json'
-const UPDATE_PAGE = 'https://gitee.com/in-search-of-ink/3d-whale-pet'
+const UPDATE_URL = 'https://gitee.com/in-search-of-ink/dsh-3d-whale-pet/raw/master/version.json'
+const UPDATE_PAGE = 'https://gitee.com/in-search-of-ink/dsh-3d-whale-pet'
 let updateInfo = null          // { version, page, url } 或 null
 let lastCheckAt = 0            // 上次检查的时间（节流用）
 
