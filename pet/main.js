@@ -931,11 +931,11 @@ let menuCenterY = 0
  */
 function installSpec() {
   try {
-    // __dirname = <profile>/node_modules/3d-whale-pet/pet
+    // __dirname = <profile>/node_modules/dsh-3d-whale-pet/pet
     const profileDir = path.resolve(__dirname, '..', '..', '..')
     const pkg = JSON.parse(fs.readFileSync(path.join(profileDir, 'package.json'), 'utf8'))
     const deps = (pkg && pkg.dependencies) || {}
-    return String(deps['3d-whale-pet'] || '')
+    return String(deps['dsh-3d-whale-pet'] || deps['3d-whale-pet'] || '')
   } catch {
     return ''
   }
