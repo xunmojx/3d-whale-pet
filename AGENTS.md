@@ -19,7 +19,7 @@
 
 ```
 源目录      C:\Users\hp\.dsh\plugins\3d-whale-pet
-安装副本    C:\Users\hp\.dsh\profiles\desktop\node_modules\3d-whale-pet
+安装副本    C:\Users\hp\.dsh\profiles\desktop\node_modules\dsh-3d-whale-pet
 ```
 
 用户实际启动的是**安装副本**。改完源目录后，如果还没发版（按规矩通常都没发），必须把改过的文件复制到安装副本，否则他重启八百次也看不到变化。
