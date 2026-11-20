@@ -1,0 +1,2043 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>虎鲸桌宠</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        body {
+            background: transparent;
+            font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        }
+        #app {
+            width: 100vw;
+            height: 100vh;
+        }
+        .bubble {
+            position: fixed;
+            left: 50%;
+            top: 62px;
+            transform: translateX(-50%);
+            /* width:max-content 必须显式给：position:fixed 且只设了 left 时，
+               收缩适应宽度的上限是「视口宽度 - left」，气泡会被挤成一条竖着的窄条。
+               宽度交给内容决定，再用 max-width 兜住长句。 */
+            width: max-content;
+            max-width: 252px;
+            max-height: 220px;
+            overflow-y: auto;
+            scrollbar-width: none;
+            background: rgba(255, 255, 255, 0.95);
+            color: #1a1f36;
+            border-radius: 14px;
+            padding: 10px 14px;
+            font-size: 13px;
+            line-height: 1.5;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+            opacity: 0;
+            transition: opacity 0.2s;
+            pointer-events: none;
+            z-index: 20;
+        }
+        .bubble.show { opacity: 1; }
+        .bubble::-webkit-scrollbar { width: 0; height: 0; }
+        .bubble::after {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 8px solid transparent;
+            border-top-color: rgba(255, 255, 255, 0.95);
+            border-bottom: none;
+        }
+        .pet-input {
+            position: fixed;
+            left: 50%;
+            bottom: 56px;
+            transform: translateX(-50%);
+            width: 300px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 14px;
+            padding: 8px 12px;
+            border: none;
+            outline: none;
+            font-size: 13px;
+            color: #1a1f36;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+            z-index: 21;
+        }
+        body { user-select: none; }
+        /* 跳舞音符粒子 */
+        .pet-note {
+            position: fixed;
+            left: 50%;
+            top: 38%;
+            font-size: 20px;
+            color: #4d6bfe;
+            pointer-events: none;
+            z-index: 30;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            animation: noteFloat 1.1s ease-out forwards;
+        }
+        @keyframes noteFloat {
+            0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+            20%  { opacity: 1; }
+            100% { opacity: 0; transform: translate(calc(-50% + var(--dx, 0px)), calc(-50% - 70px)) scale(1.35); }
+        }
+        /* 互动泡泡（竖排靠左，避免遮挡顶部气泡对话框） */
+        #action-bubbles {
+            position: fixed;
+            left: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 40;
+        }
+        #action-bubbles.open { display: flex; }
+        .action-bubble {
+            width: 54px;
+            height: 54px;
+            border-radius: 50%;
+            border: 1px solid rgba(77, 107, 254, 0.3);
+            background: rgba(20, 26, 44, 0.85);
+            color: #fff;
+            font-size: 22px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1px;
+            transition: 0.15s;
+        }
+        .action-bubble:hover { transform: scale(1.15); background: #fff; color: #1a1f36; }
+        .action-bubble .alabel { font-size: 10px; }
+        /* 食物鱼 */
+        .fish-particle {
+            position: fixed;
+            z-index: 25;
+            pointer-events: none;
+            animation: fishSwim 0.7s ease-in forwards;
+        }
+        @keyframes fishSwim {
+            0%   { opacity: 1; transform: translate(0, 0) scale(1) rotate(0); }
+            60%  { opacity: 1; }
+            100% { opacity: 0; transform: translate(70px, -30px) scale(0.2) rotate(-30deg); }
+        }
+        .heart-particle {
+            position: fixed;
+            z-index: 25;
+            pointer-events: none;
+            animation: noteFloat 1.6s ease-out forwards;
+        }
+        /* 睡眠的 zzz：文字本身走流动渐变，不是表情符号 */
+        .zzz-particle {
+            position: fixed;
+            z-index: 25;
+            pointer-events: none;
+            font-weight: 800;
+            font-family: inherit;
+            line-height: 1;
+            background: linear-gradient(100deg, #4d8dff, #a06bff, #ff6fae, #4d8dff);
+            background-size: 300% 100%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            animation: noteFloat 2.4s ease-out forwards, zzzFlow 1.8s linear infinite;
+        }
+        @keyframes zzzFlow {
+            0%   { background-position: 0% 50%; }
+            100% { background-position: 300% 50%; }
+        }
+    </style>
+</head>
+<body>
+    <div id="app"></div>
+    <div id="action-bubbles">
+        <button class="action-bubble" data-action="feed" title="喂食">🐟<span class="alabel">喂食</span></button>
+        <button class="action-bubble" data-action="pet" title="爱心">💗<span class="alabel">爱心</span></button>
+        <button class="action-bubble" data-action="sleep" title="睡眠">💤<span class="alabel">睡眠</span></button>
+    </div>
+
+    <script src="vendor/three.min.js">
+    </script>
+    <script src="vendor/OrbitControls.js">
+    </script>
+    <script>
+        (function() {
+            const CONFIG = {
+                SWEPT_SLICES: 60,
+                SWEPT_RINGS: 48,
+                // 尾鳍（V形分叉 · 参照 deepseek logo · 水平展开）
+                TAIL_FORK_SCALE: 0.177,
+                TAIL_THICKNESS: 0.15,
+                TAIL_OPEN_ANGLE_DEG: 76.95,
+                TAIL_NOTCH_DX: 0.15,
+                TAIL_NOTCH_DY: 0.5,
+                TAIL_TILT_DEG: 50,      // 尾鳍相对身体末端的装配角（和挂点位置配套，改小会断开）
+                // 背鳍（参照 deepseek logo 背部凸起轮廓）
+                DORSAL_START_FRAC: 0.331,
+                DORSAL_END_FRAC: 0.559,
+                DORSAL_SAMPLES: 40,
+                DORSAL_THICKNESS: 0.15,
+                DORSAL_HEIGHT_SCALE: 0.3186,      // 保持不变
+                DORSAL_SINK: 0.0,
+                // 胸鳍（一对，参照 logo 腹部凸起轮廓）
+                // 放大10%：0.84 -> 0.924，0.30 -> 0.33；已嵌入身体
+                PEC_START_FRAC: 0.38,
+                PEC_END_FRAC: 0.48,
+                PEC_SPAN: 0.924,                  // 0.84 * 1.1
+                PEC_SWEEP: 0.33,                  // 0.30 * 1.1
+                PEC_THICKNESS: 0.13,
+                PEC_ANGLE_DEG: 30,
+                PEC_RADIAN: 130,
+                PEC_SINK: 0.0,
+                PEC_OUTWARD_OFFSET: -0.025,        // 嵌入身体半个厚度，根部贴合表面
+                PEC_BACKWARD_OFFSET: 0.0,         // 保持不变
+                BODY_TARGET_HEIGHT: 3.5,
+                MODEL_SCALE: 0.5,                 // 宠物整体缩小到原尺寸 50%（原模型为网页观看做得太大）
+                // 眼斑与眼球偏移（向前移动10，向上移动10）
+                BROW_SCALE: 0.65,
+                BROW_OFFSET_X: -35.4,
+                BROW_OFFSET_Y: 6.0,
+                BROW_LIFT: 0.9,
+                EYE_OFFSET_Y: 10.5,
+                EYE_RADIUS: 2.8,
+                EYE_CIRCLE_SEGMENTS: 32,
+                AUTO_ROTATE_SPEED: 1.6,
+                FLOAT_AMPLITUDE: 0.06,
+                FLOAT_SPEED: 1.2,
+                COLOR_BODY_BLUE: 0x4D6BFE,
+                COLOR_WHITE: 0xffffff,
+            };
+
+            const PATH = 'M 144.00 80.00 C 144.67 84.83, 143.00 95.34, 141.00 102.00 C 139.00 108.66, 136.50 113.84, 132.00 120.00 C 127.50 126.16, 119.66 134.34, 114.00 139.00 C 108.34 143.66, 103.49 146.17, 98.00 148.00 C 92.51 149.83, 87.83 150.83, 81.00 150.00 C 74.17 149.17, 63.83 146.66, 57.00 143.00 C 50.17 139.34, 44.50 134.16, 40.00 128.00 C 35.50 121.84, 31.83 113.16, 30.00 106.00 C 28.17 98.84, 28.17 90.99, 29.00 85.00 C 29.83 79.01, 32.17 74.50, 35.00 70.00 C 37.83 65.50, 41.67 61.00, 46.00 58.00 C 50.33 55.00, 56.01 53.00, 61.00 52.00 C 66.00 51.00, 70.51 51.00, 76.00 52.00 C 81.49 53.00, 85.34 52.34, 94.00 58.00 C 102.66 63.66, 120.84 83.50, 128.00 86.00 C 135.16 88.50, 134.34 74.00, 137.00 73.00 C 139.66 72.00, 143.33 75.17, 144.00 80.00 Z';
+
+            function samplePathDense(d, stepsPerSegment = 50, totalResample = 800) {
+                const toks = d.match(/[MLCZ]|[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi);
+                let i = 0, x = 0, y = 0;
+                const rawPts = [];
+                const num = () => parseFloat(toks[i++]);
+                const bez = (t, p0, p1, p2, p3) => {
+                    const mt = 1 - t;
+                    return mt * mt * mt * p0 + 3 * mt * mt * t * p1 + 3 * mt * t * t * p2 + t * t * t * p3;
+                };
+                while (i < toks.length) {
+                    const c = toks[i++].toUpperCase();
+                    if (c === 'M' || c === 'L') {
+                        x = num(); y = num(); rawPts.push({ x, y });
+                    } else if (c === 'C') {
+                        const c1x = num(), c1y = num(), c2x = num(), c2y = num(), ex = num(), ey = num();
+                        for (let s = 1; s <= stepsPerSegment; s++) {
+                            const t = s / stepsPerSegment;
+                            rawPts.push({ x: bez(t, x, c1x, c2x, ex), y: bez(t, y, c1y, c2y, ey) });
+                        }
+                        x = ex; y = ey;
+                    }
+                }
+                return catmullRomResample(rawPts, totalResample, true);
+            }
+
+            function catmullRomResample(points, targetCount, closed = true) {
+                if (points.length < 2) return points;
+                const n = points.length;
+                const src = closed ? [...points, points[0], points[1], points[2]] : points;
+                const len = closed ? n : n - 1;
+                const arcLen = [0];
+                for (let i = 1; i < src.length; i++) {
+                    const dx = src[i].x - src[i - 1].x, dy = src[i].y - src[i - 1].y;
+                    arcLen.push(arcLen[i - 1] + Math.sqrt(dx * dx + dy * dy));
+                }
+                const totalLen = arcLen[arcLen.length - 1];
+                const result = [];
+                for (let k = 0; k < targetCount; k++) {
+                    const t = (k / targetCount) * totalLen;
+                    let seg = 0;
+                    while (seg < arcLen.length - 2 && arcLen[seg + 1] < t) seg++;
+                    const segStart = arcLen[seg], segEnd = arcLen[seg + 1];
+                    const localT = (segEnd - segStart) > 0 ? (t - segStart) / (segEnd - segStart) : 0;
+                    const p0 = src[Math.max(0, seg - 1)], p1 = src[seg], p2 = src[seg + 1], p3 = src[Math.min(src.length - 1, seg + 2)];
+                    const tt = localT, tt2 = tt * tt, tt3 = tt2 * tt;
+                    const x = 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * tt + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * tt2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * tt3);
+                    const y = 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * tt + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * tt2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * tt3);
+                    result.push({ x, y });
+                }
+                return result;
+            }
+
+            const rawContour = samplePathDense(PATH, 50, 800);
+            let cx = 0, cy = 0;
+            rawContour.forEach(p => { cx += p.x; cy += p.y; });
+            cx /= rawContour.length; cy /= rawContour.length;
+            const pts = rawContour.map(p => ({ x: (p.x - cx) * 1.1, y: -(p.y - cy) }));
+            if (THREE.ShapeUtils.isClockWise(pts.map(p => new THREE.Vector2(p.x, p.y)))) pts.reverse();
+
+            function buildSwept(poly, nSlices = CONFIG.SWEPT_SLICES, nRings = CONFIG.SWEPT_RINGS) {
+                let minX = 1e9, maxX = -1e9;
+                let polyMinY = Infinity, polyMaxY = -Infinity;
+                for (const p of poly) {
+                    minX = Math.min(minX, p.x);
+                    maxX = Math.max(maxX, p.x);
+                    polyMinY = Math.min(polyMinY, p.y);
+                    polyMaxY = Math.max(polyMaxY, p.y);
+                }
+                const totalX = maxX - minX, step = totalX / nSlices;
+                const polyHeight = polyMaxY - polyMinY;
+                const tailLiftAmount = 0.1 * polyHeight;
+                const xs = [], midRaw = [], radRaw = [];
+                let lastM = 0;
+                for (let s = 0; s <= nSlices; s++) {
+                    const x = minX + s * step;
+                    let top = -Infinity, bot = Infinity;
+                    for (let i = 0; i < poly.length; i++) {
+                        const a = poly[i], b = poly[(i + 1) % poly.length];
+                        if (Math.abs(a.x - b.x) < 1e-9) continue;
+                        if ((a.x - x) * (b.x - x) > 0) continue;
+                        const y = a.y + (x - a.x) / (b.x - a.x) * (b.y - a.y);
+                        if (y > top) top = y;
+                        if (y < bot) bot = y;
+                    }
+                    let m, r;
+                    if (isFinite(top) && isFinite(bot)) { m = (top + bot) / 2; r = (top - bot) / 2; if (r < 0) r = 0; lastM = m; }
+                    else { m = lastM; r = 0; }
+                    xs.push(x); midRaw.push(m); radRaw.push(Math.max(0, r));
+                }
+                function smoothGaussian(arr, sigma, iterations) {
+                    const len = arr.length, half = Math.ceil(sigma * 3), kernel = [];
+                    let sumK = 0;
+                    for (let j = -half; j <= half; j++) { const val = Math.exp(-0.5 * (j / sigma) * (j / sigma)); kernel.push(val); sumK += val; }
+                    for (let i = 0; i < kernel.length; i++) kernel[i] /= sumK;
+                    let work = [...arr];
+                    for (let iter = 0; iter < iterations; iter++) {
+                        const temp = [...work];
+                        for (let i = 0; i < len; i++) { let sum = 0; for (let j = -half; j <= half; j++) { const idx = Math.min(len - 1, Math.max(0, i + j)); sum += temp[idx] * kernel[j + half]; } work[i] = sum; }
+                    }
+                    return work;
+                }
+                function removeDents(arr, window = 10) {
+                    const res = [...arr];
+                    for (let i = 1; i < res.length - 1; i++) {
+                        const left = Math.max(0, i - window), right = Math.min(res.length - 1, i + window);
+                        let minNeighbor = Infinity;
+                        for (let j = left; j <= right; j++) { if (j === i) continue; if (res[j] < minNeighbor) minNeighbor = res[j]; }
+                        if (res[i] < minNeighbor) res[i] = minNeighbor;
+                    }
+                    return res;
+                }
+                function smoothstep(edge0, edge1, x) {
+                    const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
+                    return t * t * (3 - 2 * t);
+                }
+
+                let radSmooth = smoothGaussian(radRaw, 3.0, 2);
+                let midSmooth = smoothGaussian(midRaw, 2.0, 1);
+                radSmooth = removeDents(radSmooth, 8);
+                radSmooth = smoothGaussian(radSmooth, 1.5, 1);
+                let maxIdx = 0, maxVal = 0;
+                for (let i = 0; i < radSmooth.length; i++) { if (radSmooth[i] > maxVal) { maxVal = radSmooth[i]; maxIdx = i; } }
+                for (let i = maxIdx - 1; i >= 0; i--) { if (radSmooth[i] > radSmooth[i + 1]) radSmooth[i] = radSmooth[i + 1]; }
+                for (let i = maxIdx + 1; i < radSmooth.length; i++) { if (radSmooth[i] > radSmooth[i - 1]) radSmooth[i] = radSmooth[i - 1]; }
+                const tailRatio = 0.14, headRatio = 0.11;
+                const tailLen = totalX * tailRatio, headLen = totalX * headRatio;
+                const tailEnd = xs.findIndex(x => x >= minX + tailLen);
+                if (tailEnd > 2) { const rBody = radSmooth[tailEnd]; for (let i = 0; i <= tailEnd; i++) { const t = (xs[i] - minX) / tailLen; const ease = 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3); radSmooth[i] = Math.min(radSmooth[i], rBody * ease); } }
+                const headStart = xs.findIndex(x => x >= maxX - headLen);
+                if (headStart < nSlices - 2) { const rBody = radSmooth[headStart]; for (let i = headStart; i <= nSlices; i++) { const t = (maxX - xs[i]) / headLen; const ease = 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3); radSmooth[i] = Math.min(radSmooth[i], rBody * ease); } }
+                radSmooth[0] = 0; radSmooth[nSlices] = 0;
+                radSmooth = smoothGaussian(radSmooth, 1.2, 1); radSmooth[0] = 0; radSmooth[nSlices] = 0;
+
+                const tailLiftStartFrac = 0.75;
+                for (let i = 0; i <= nSlices; i++) {
+                    const t = (xs[i] - minX) / totalX;
+                    if (t > tailLiftStartFrac) {
+                        const liftT = smoothstep(tailLiftStartFrac, 1.0, t);
+                        midSmooth[i] += tailLiftAmount * liftT;
+                    }
+                }
+
+                const pos = [];
+                for (let s = 0; s <= nSlices; s++) { for (let k = 0; k < nRings; k++) { const th = (k / nRings) * Math.PI * 2, c = Math.cos(th), sn = Math.sin(th); pos.push(xs[s], midSmooth[s] + radSmooth[s] * c, radSmooth[s] * sn); } }
+                const idx = [];
+                for (let s = 0; s < nSlices; s++) { for (let k = 0; k < nRings; k++) { const k2 = (k + 1) % nRings; const a = s * nRings + k, b = s * nRings + k2, c2 = (s + 1) * nRings + k, d = (s + 1) * nRings + k2; idx.push(a, d, c2, a, b, d); } }
+                const geo = new THREE.BufferGeometry();
+                geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+                geo.setIndex(idx);
+                geo.userData.swept = { xs, mid: midSmooth, rad: radSmooth };
+                return geo;
+            }
+
+            const geo = buildSwept(pts);
+            geo.computeVertexNormals(); geo.computeBoundingBox();
+            const b = geo.boundingBox, size = b.getSize(new THREE.Vector3()), scale = CONFIG.BODY_TARGET_HEIGHT / size.y;
+            geo.scale(scale, scale, scale);
+
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 100);
+            camera.position.set(3.6, 2.3, 5.4);
+            const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(innerWidth, innerHeight);
+            renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+            renderer.shadowMap.enabled = false;
+            renderer.setClearColor(0x000000, 0);
+            renderer.toneMapping = THREE.NoToneMapping;
+            document.getElementById('app').appendChild(renderer.domElement);
+
+            const controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.08;
+            controls.autoRotate = false;      // 不自转
+            controls.enableZoom = false;      // 锁死缩放：尺寸固定在 50%
+            controls.maxPolarAngle = Math.PI * 0.62;
+            // 鼠标绑定：左键交给窗口拖动（禁用），右键旋转视角
+            controls.mouseButtons.LEFT = null;
+            controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
+            controls.mouseButtons.MIDDLE = null;
+
+            geo.computeBoundingBox();
+            const bb = geo.boundingBox, sw = geo.userData.swept, nSw = sw.mid.length;
+            const mrData = new Uint16Array(nSw * 2);
+            for (let i = 0; i < nSw; i++) { mrData[i * 2] = THREE.DataUtils.toHalfFloat(sw.mid[i] * scale); mrData[i * 2 + 1] = THREE.DataUtils.toHalfFloat(sw.rad[i] * scale); }
+            const mrTex = new THREE.DataTexture(mrData, nSw, 1, THREE.RGFormat, THREE.HalfFloatType);
+            mrTex.minFilter = mrTex.magFilter = THREE.LinearFilter;
+            mrTex.needsUpdate = true;
+
+            // ==================== 皮肤系统 ====================
+            const SKINS = {
+                classic: { dark: 0x4D6BFE, white: 0xFFFFFF }, // 深寻蓝
+                night:   { dark: 0x271F19, white: 0xFFF5E3 }, // 虎鲸黑
+                pink:    { dark: 0xE85A8A, white: 0xFFE8F0 }, // 草莓粉
+                green:   { dark: 0x2E9E6B, white: 0xE8FFF2 }, // 薄荷绿
+                gold:    { dark: 0xC78B20, white: 0xFFF4D6 }, // 土豪金
+            };
+            let currentSkinName = 'classic';
+            let currentSkin = { dark: CONFIG.COLOR_BODY_BLUE, white: CONFIG.COLOR_WHITE };
+            (function () {
+                try { currentSkinName = localStorage.getItem('pet_skin') || 'classic'; } catch (e) {}
+                if (!SKINS[currentSkinName]) currentSkinName = 'classic';
+                currentSkin = { ...SKINS[currentSkinName] };
+            })();
+
+            const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+            material.extensions = { derivatives: true };
+            let bodyUniforms = null; // 皮肤切换用：身体 shader 的 uDark/uWhite
+            material.onBeforeCompile = (sh) => {
+                sh.uniforms.uMR = { value: mrTex };
+                sh.uniforms.uMin = { value: bb.min.x };
+                sh.uniforms.uMax = { value: bb.max.x };
+                sh.uniforms.uDark = { value: new THREE.Color(currentSkin.dark) };
+                sh.uniforms.uWhite = { value: new THREE.Color(currentSkin.white) };
+                bodyUniforms = sh.uniforms;
+                sh.vertexShader = sh.vertexShader
+                    .replace('#include <common>', '#include <common>\nvarying vec3 vPos;')
+                    .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPos = position;');
+                sh.fragmentShader = sh.fragmentShader
+                    .replace('#include <common>', '#include <common>\nvarying vec3 vPos;\nuniform sampler2D uMR;\nuniform float uMin, uMax;\nuniform vec3 uDark;\nuniform vec3 uWhite;')
+                    .replace('#include <color_fragment>', `#include <color_fragment>
+                    {
+                        float u = clamp((vPos.x - uMin) / (uMax - uMin), 0.0, 1.0);
+                        float midY = texture2D(uMR, vec2(u, 0.5)).r;
+                        float ang = 3.14159265 - abs(atan(vPos.z, vPos.y - midY));
+                        float baseScale = 0.77 * 1.1;
+                        float uCenter = 0.28, uHalf = 0.245 * baseScale, angMax = 0.84 * baseScale;
+                        float headFactor = 1.0 - smoothstep(0.18, 0.52, u);
+                        float angMaxAdjusted = angMax * (1.0 + 0.7 * headFactor);
+                        float uu = (0.16 + 0.49 * u - uCenter) / uHalf;
+                        float nn = ang / angMaxAdjusted;
+                        float rr = uu * uu + nn * nn;
+                        float tailZone = smoothstep(0.40, 0.58, u) * (1.0 - smoothstep(0.80, 0.86, u));
+                        float peak = 0.78, bumpWidth = 0.11, bumpStrength = 1.0;
+                        float d = nn - peak;
+                        float bump = tailZone * bumpStrength * exp(-d*d / (bumpWidth*bumpWidth));
+                        float threshold = 1.0 + bump;
+                        float aa = fwidth(rr) * 1.2 + 2e-4;
+                        float a = 1.0 - smoothstep(threshold - aa, threshold + aa, rr);
+                        diffuseColor.rgb = mix(uDark, uWhite, a);
+                    }`);
+            };
+            const model = new THREE.Mesh(geo, material);
+            // 整体缩小到 50%（作为桌宠不需要网页那么大的尺寸）；父分组缩放不影响 model 自身的浮动/旋转/呼吸
+            const petGroup = new THREE.Group();
+            petGroup.scale.setScalar(CONFIG.MODEL_SCALE);
+            petGroup.add(model);
+            scene.add(petGroup);
+
+            // ==================== 眼斑与眼球（已调整偏移） ====================
+            const BROW_PATH = 'M 146.00 127.00 C 144.34 128.00, 138.50 129.50, 136.00 129.00 C 133.50 128.50, 131.83 126.33, 131.00 124.00 C 130.17 121.67, 131.67 117.16, 131.00 115.00 C 130.33 112.84, 128.33 111.67, 127.00 111.00 C 125.67 110.33, 124.00 111.33, 123.00 111.00 C 122.00 110.67, 121.17 109.83, 121.00 109.00 C 120.83 108.17, 120.50 106.67, 122.00 106.00 C 123.50 105.33, 127.84 104.67, 130.00 105.00 C 132.16 105.33, 133.00 106.17, 135.00 108.00 C 137.00 109.83, 140.17 113.50, 142.00 116.00 C 143.83 118.50, 145.33 121.17, 146.00 123.00 C 146.67 124.83, 147.66 126.00, 146.00 127.00 Z';
+            function sampleBrowPath(d, steps = 40) { 
+                const toks = d.match(/[MLCZ]|[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi);
+                let i = 0, x = 0, y = 0; const pts = [];
+                const num = () => parseFloat(toks[i++]);
+                const bez = (t, p0, p1, p2, p3) => { const mt = 1 - t; return mt*mt*mt*p0 + 3*mt*mt*t*p1 + 3*mt*t*t*p2 + t*t*t*p3; };
+                while (i < toks.length) { const c = toks[i++].toUpperCase(); if (c==='M'||c==='L') { x=num(); y=num(); pts.push({x,y}); } else if (c==='C') { const c1x=num(),c1y=num(),c2x=num(),c2y=num(),ex=num(),ey=num(); for (let s=1;s<=steps;s++) { const t=s/steps; pts.push({x:bez(t,x,c1x,c2x,ex), y:bez(t,y,c1y,c2y,ey)}); } x=ex; y=ey; } }
+                return pts;
+            }
+            const browSvg = sampleBrowPath(BROW_PATH, 40);
+            function mapBrowToSurface(p, body) { 
+                const xsArr=body.xs, midArr=body.mid, radArr=body.rad;
+                const px = (p.x-cx)*CONFIG.BROW_SCALE+CONFIG.BROW_OFFSET_X;
+                const py = -(p.y-cy)*CONFIG.BROW_SCALE+CONFIG.BROW_OFFSET_Y;
+                const n=xsArr.length; let s;
+                if(px<=xsArr[0]) s=0; else if(px>=xsArr[n-1]) s=n-1;
+                else { let i=0; while(i<n-1&&xsArr[i+1]<px) i++; s=i+(px-xsArr[i])/Math.max(1e-9, xsArr[i+1]-xsArr[i]); }
+                const i0=Math.min(Math.floor(s),n-1), i1=Math.min(i0+1,n-1);
+                const t=s-i0;
+                const m=midArr[i0]*(1-t)+midArr[i1]*t;
+                const r=Math.max(0,radArr[i0]*(1-t)+radArr[i1]*t);
+                const cosTh=r>1e-6?Math.max(-1,Math.min(1,(py-m)/r)):1;
+                const sinTh=Math.sqrt(Math.max(0,1-cosTh*cosTh));
+                const dx=Math.max(1e-9,xsArr[i1]-xsArr[i0]);
+                const dr=(radArr[i1]-radArr[i0])/dx, dm=(midArr[i1]-midArr[i0])/dx;
+                const nx=-(dr+dm*cosTh), ny=cosTh, nz=sinTh;
+                const len=Math.hypot(nx,ny,nz)||1;
+                return { x:px+nx/len*CONFIG.BROW_LIFT, y:m+r*cosTh+ny/len*CONFIG.BROW_LIFT, z:r*sinTh+nz/len*CONFIG.BROW_LIFT };
+            }
+            function buildBrowMesh(flip) { 
+                const contour = browSvg.map(p=>new THREE.Vector2((p.x-cx)*CONFIG.BROW_SCALE+CONFIG.BROW_OFFSET_X, -(p.y-cy)*CONFIG.BROW_SCALE+CONFIG.BROW_OFFSET_Y));
+                const tri = THREE.ShapeUtils.triangulateShape(contour, []);
+                const pos=[], idx=[];
+                const swept=geo.userData.swept;
+                for(const p of browSvg) { const sp=mapBrowToSurface(p,swept); pos.push(sp.x,sp.y,sp.z); }
+                for(const t of tri) idx.push(t[0],t[1],t[2]);
+                const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.setIndex(idx);
+                if(flip) { const arr=g.attributes.position.array; for(let i=2;i<arr.length;i+=3) arr[i]=-arr[i]; }
+                g.scale(scale,scale,scale); return g;
+            }
+            const browMat = new THREE.MeshBasicMaterial({ color:CONFIG.COLOR_WHITE, side:THREE.DoubleSide, polygonOffset:true, polygonOffsetFactor:-2, polygonOffsetUnits:-2 });
+            const browGroup = new THREE.Group();
+            browGroup.add(new THREE.Mesh(buildBrowMesh(false), browMat));
+            browGroup.add(new THREE.Mesh(buildBrowMesh(true), browMat));
+            model.add(browGroup);
+
+            // 眼球
+            const dentPoint = browSvg.reduce((prev,curr)=>(curr.y<prev.y?curr:prev), browSvg[0]);
+            const eyeCenterX = dentPoint.x-2, eyeCenterY = dentPoint.y+CONFIG.EYE_OFFSET_Y;
+            const circlePoints = [];
+            for(let i=0;i<CONFIG.EYE_CIRCLE_SEGMENTS;i++) { const angle=(i/CONFIG.EYE_CIRCLE_SEGMENTS)*Math.PI*2; circlePoints.push({x:eyeCenterX+CONFIG.EYE_RADIUS*Math.cos(angle), y:eyeCenterY+CONFIG.EYE_RADIUS*Math.sin(angle)}); }
+            function buildEyeMesh(flip) {
+                const swept = geo.userData.swept;
+                const raw = circlePoints.map(p => mapBrowToSurface(p, swept));
+                const contour = circlePoints.map(p => new THREE.Vector2((p.x - cx) * CONFIG.BROW_SCALE + CONFIG.BROW_OFFSET_X, -(p.y - cy) * CONFIG.BROW_SCALE + CONFIG.BROW_OFFSET_Y));
+                const tri = THREE.ShapeUtils.triangulateShape(contour, []);
+                const verts = raw.map(v => new THREE.Vector3(v.x * scale, v.y * scale, v.z * scale));
+                if (flip) for (const v of verts) v.z = -v.z;
+                let cx0 = 0, cy0 = 0, cz0 = 0;
+                for (const v of verts) { cx0 += v.x; cy0 += v.y; cz0 += v.z; }
+                cx0 /= verts.length; cy0 /= verts.length; cz0 /= verts.length;
+                const pos = [], idx = [];
+                for (const v of verts) pos.push(v.x - cx0, v.y - cy0, v.z - cz0);
+                for (const t of tri) idx.push(t[0], t[1], t[2]);
+                const g = new THREE.BufferGeometry();
+                g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+                g.setIndex(idx);
+                return { geom: g, center: new THREE.Vector3(cx0, cy0, cz0) };
+            }
+            const eyeMat = new THREE.MeshBasicMaterial({ color:CONFIG.COLOR_WHITE, side:THREE.DoubleSide, polygonOffset:true, polygonOffsetFactor:-3, polygonOffsetUnits:-3 });
+            const eyeGroup = new THREE.Group();
+            const eyePivots = [];
+            for (const flip of [false, true]) {
+                const { geom, center } = buildEyeMesh(flip);
+                const pivot = new THREE.Group();
+                pivot.position.copy(center);
+                pivot.add(new THREE.Mesh(geom, eyeMat));
+                eyeGroup.add(pivot);
+                eyePivots.push(pivot);
+            }
+            model.add(eyeGroup);
+
+            // ==================== 尾鳍（保持不变） ====================
+            const TAIL_PATH = "M 17.902 4.103 L 22.379 9.998 C 22.435 9.614, 22.507 9.073, 22.499 8.762 C 22.494 8.572, 22.538 8.499, 22.755 8.477 C 23.354 8.408, 23.935 8.244, 24.469 7.950 C 26.019 7.104, 26.644 5.713, 26.791 4.047 C 26.813 3.792, 26.787 3.529, 26.517 3.395 C 26.235 3.257, 26.114 3.520, 25.949 3.653 C 25.892 3.697, 25.845 3.753, 25.797 3.805 C 25.385 4.245, 24.903 4.534, 24.274 4.500 C 23.354 4.448, 22.568 4.737, 21.873 5.441 C 21.726 4.573, 21.235 4.055, 20.489 3.723 C 20.099 3.551, 19.703 3.377, 19.430 3.002 C 19.239 2.735, 19.186 2.437, 19.091 2.143 C 19.030 1.966, 18.970 1.785, 18.766 1.754 C 18.544 1.720, 18.457 1.905, 18.370 2.061 C 18.023 2.695, 17.889 3.395, 17.902 4.103 Z";
+            const TAIL_NOTCH = { x: 21.873, y: 5.441 };
+            function sampleTailPath(d, samples=80) { 
+                const toks = d.match(/[MLCZ]|[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi);
+                let i=0,x=0,y=0; const pts=[];
+                const num=()=>parseFloat(toks[i++]);
+                const bez=(t,p0,p1,p2,p3)=>{const mt=1-t; return mt*mt*mt*p0+3*mt*mt*t*p1+3*mt*t*t*p2+t*t*t*p3;};
+                while(i<toks.length){const c=toks[i++].toUpperCase(); if(c==='M'||c==='L'){x=num();y=num();pts.push({x,y});}else if(c==='C'){const c1x=num(),c1y=num(),c2x=num(),c2y=num(),ex=num(),ey=num(); for(let s=1;s<=samples;s++){const t=s/samples; pts.push({x:bez(t,x,c1x,c2x,ex), y:bez(t,y,c1y,c2y,ey)});} x=ex; y=ey;}}
+                if(pts.length>0) pts.push({x:pts[0].x, y:pts[0].y});
+                return pts;
+            }
+            const tailSvgPts = sampleTailPath(TAIL_PATH, 60);
+            const bodySwept = geo.userData.swept;
+            const bodyTipX = bodySwept.xs[bodySwept.xs.length-1]*scale;
+            const bodyTipY = bodySwept.mid[bodySwept.mid.length-1]*scale;
+            const openAng = CONFIG.TAIL_OPEN_ANGLE_DEG * Math.PI / 180;
+            const oc = Math.cos(openAng), os = Math.sin(openAng);
+            const finPts = tailSvgPts.map(p => {
+                const lx = (p.x - TAIL_NOTCH.x) * CONFIG.TAIL_FORK_SCALE;
+                const ly = -(p.y - TAIL_NOTCH.y) * CONFIG.TAIL_FORK_SCALE;
+                return { x: lx * oc + ly * os, z: -lx * os + ly * oc };
+            });
+
+            function extractLeftHalf(pts) {
+                const n = pts.length;
+                const crossings = [];
+                for (let i = 0; i < n; i++) {
+                    const a = pts[i], b = pts[(i+1)%n];
+                    if ((a.z < 0 && b.z >= 0) || (a.z >= 0 && b.z < 0)) {
+                        const t = a.z / (a.z - b.z);
+                        const x = a.x + t * (b.x - a.x);
+                        crossings.push({ index: i, point: { x, z: 0 } });
+                    }
+                }
+                if (crossings.length < 2) return null;
+                const c1 = crossings[0], c2 = crossings[1];
+                const startIdx = c1.index, endIdx = c2.index;
+                const half = [c1.point];
+                if (endIdx >= startIdx) {
+                    for (let i = startIdx + 1; i <= endIdx; i++) half.push(pts[i % n]);
+                } else {
+                    for (let i = startIdx + 1; i < n; i++) half.push(pts[i]);
+                    for (let i = 0; i <= endIdx; i++) half.push(pts[i]);
+                }
+                half.push(c2.point);
+                let avgZ = 0; for (const p of half) avgZ += p.z; avgZ /= half.length;
+                if (avgZ > 0) {
+                    half.length = 0;
+                    half.push(c2.point);
+                    if (endIdx + 1 < startIdx) {
+                        for (let i = endIdx + 1; i <= startIdx; i++) half.push(pts[i % n]);
+                    } else {
+                        for (let i = endIdx + 1; i < n; i++) half.push(pts[i]);
+                        for (let i = 0; i <= startIdx; i++) half.push(pts[i]);
+                    }
+                    half.push(c1.point);
+                }
+                return half;
+            }
+
+            // ==================== 圆角薄片 ====================
+            // 原来是把 2D 轮廓直接挤出成柱体：正反两个平面 + 直上直下的侧壁，
+            // 侧看就是一块方头板子 —— 这就是「扁柱形」的来源。
+            // 现在把边缘做成圆弧收口：沿轮廓方向分几圈，越往外越薄、同时向内收，
+            // 截面像一个透镜。虽然材质是无光照的纯色（所以正面看不出明暗），
+            // 但转身、侧对镜头时露出的那条厚度是圆润的窄边，不再是矩形。
+            //
+            // pts2d: [{x,y}] 平面轮廓；thickness: 总厚度；map3d(x,y,z) 摆到三维。
+            function buildRoundedFin(pts2d, thickness, map3d) {
+                const N = pts2d.length;
+                const h = thickness / 2;
+                const R = Math.min(h * 0.9, Math.max(0.012, h * 0.45)); // 圆角半径
+                const RINGS = 3;
+
+                // 每个顶点的「向外」方向（相对轮廓重心）：收边时朝里挪
+                let gx = 0, gy = 0;
+                for (const p of pts2d) { gx += p.x; gy += p.y; }
+                gx /= N; gy /= N;
+                const dirs = pts2d.map(p => {
+                    const dx = p.x - gx, dy = p.y - gy;
+                    const l = Math.hypot(dx, dy) || 1;
+                    return { x: dx / l, y: dy / l };
+                });
+
+                // 一层层往中间堆：z 从 ±h 到 0，同时向内收 R
+                const layers = [];
+                for (let k = 0; k <= RINGS; k++) {
+                    const t = (k / RINGS) * Math.PI / 2;
+                    const inset = R * (1 - Math.sin(t));
+                    layers.push({
+                        z: h * Math.cos(t),
+                        pts: pts2d.map((p, i) => ({ x: p.x - dirs[i].x * inset, y: p.y - dirs[i].y * inset })),
+                    });
+                }
+
+                const pos = [];
+                const ringStart = [];
+                const pushRing = (layer, sign) => {
+                    ringStart.push(pos.length / 3);
+                    for (const p of layer.pts) {
+                        const v = map3d(p.x, p.y, layer.z * sign);
+                        pos.push(v.x, v.y, v.z);
+                    }
+                };
+                // 上半：z 从 +h 收到 0；下半：从 0 收到 -h（跳过重复的赤道圈）
+                for (let k = 0; k < layers.length; k++) pushRing(layers[k], 1);
+                for (let k = layers.length - 2; k >= 0; k--) pushRing(layers[k], -1);
+
+                const idx = [];
+                // 侧壁：相邻两圈之间铺四边形
+                for (let r = 0; r < ringStart.length - 1; r++) {
+                    const a0 = ringStart[r], b0 = ringStart[r + 1];
+                    for (let i = 0; i < N; i++) {
+                        const j = (i + 1) % N;
+                        idx.push(a0 + i, a0 + j, b0 + j, a0 + i, b0 + j, b0 + i);
+                    }
+                }
+                // 正反两个端面（用最内圈那个轮廓三角化）
+                const capPts = layers[0].pts.map(p => new THREE.Vector2(p.x, p.y));
+                const tri = THREE.ShapeUtils.triangulateShape(capPts, []);
+                const top = ringStart[0], bottom = ringStart[ringStart.length - 1];
+                for (const t of tri) { idx.push(top + t[0], top + t[1], top + t[2]); }
+                for (const t of tri) { idx.push(bottom + t[0], bottom + t[2], bottom + t[1]); }
+
+                const geom = new THREE.BufferGeometry();
+                geom.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+                geom.setIndex(idx);
+                geom.computeVertexNormals();
+                return geom;
+            }
+
+            function buildLeafGeometry(contour2D, thickness) {
+                // 尾鳍：轮廓在 (x,z) 平面上，厚度沿 y
+                const pts2d = contour2D.map(p => ({ x: p.x, y: p.z }));
+                return buildRoundedFin(pts2d, thickness, (x, y, z) => new THREE.Vector3(x, z, y));
+            }
+
+            const tailMat = new THREE.MeshBasicMaterial({ color: CONFIG.COLOR_BODY_BLUE, side: THREE.DoubleSide });
+            const tailGroup = new THREE.Group();
+            const leftHalf = extractLeftHalf(finPts);
+            if (leftHalf && leftHalf.length > 2) {
+                const closedLeft = [...leftHalf, { x: leftHalf[0].x, z: leftHalf[0].z }];
+                const leftGeom = buildLeafGeometry(closedLeft, CONFIG.TAIL_THICKNESS);
+                tailGroup.add(new THREE.Mesh(leftGeom, tailMat));
+                const rightMesh = new THREE.Mesh(leftGeom.clone(), tailMat);
+                rightMesh.scale.z = -1;
+                tailGroup.add(rightMesh);
+            } else {
+                console.warn('尾鳍半边提取失败，使用原始轮廓');
+                const shapePts = finPts.map(p => new THREE.Vector2(p.x, p.z));
+                const tri = THREE.ShapeUtils.triangulateShape(shapePts, []);
+                const N = finPts.length;
+                const h = CONFIG.TAIL_THICKNESS / 2;
+                const pos = [];
+                for (const p of finPts) pos.push(p.x, h, p.z);
+                for (const p of finPts) pos.push(p.x, -h, p.z);
+                const idx = [];
+                for (const t of tri) idx.push(t[0], t[1], t[2]);
+                for (const t of tri) idx.push(N + t[0], N + t[2], N + t[1]);
+                for (let i = 0; i < N; i++) {
+                    const a = i, b = (i + 1) % N;
+                    idx.push(a, b, N + b, a, N + b, N + a);
+                }
+                const fallbackGeom = new THREE.BufferGeometry();
+                fallbackGeom.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+                fallbackGeom.setIndex(idx);
+                fallbackGeom.computeVertexNormals();
+                tailGroup.add(new THREE.Mesh(fallbackGeom, tailMat));
+            }
+
+            model.add(tailGroup);
+            tailGroup.position.set(bodyTipX + CONFIG.TAIL_NOTCH_DX, bodyTipY + CONFIG.TAIL_NOTCH_DY, 0);
+            tailGroup.rotation.z = CONFIG.TAIL_TILT_DEG * Math.PI / 180;
+
+            // ---- 尾巴整体弯曲 ----
+            // 原来的做法是只转 tailGroup，也就是只有尾鳍那一片在摆，幅度一大就和身体脱节。
+            // 现在改成：身体尾段按权重连续弯曲，尾鳍跟着弯曲后的尾尖走 —— 整条尾巴一起动。
+            const tailBend = (() => {
+                const arr = geo.attributes.position.array;
+                const base = Float32Array.from(arr);
+                const bb2 = geo.boundingBox;
+                const minx = bb2.min.x, maxx = bb2.max.x;
+                const span = maxx - minx || 1;
+                // 弯曲支点放在身体中点（而不是尾巴根部）：弯的那一段从 50% 拉到 100%，
+                // 同样 24° 的总角度摊在双倍长度上，曲率减半，过渡就顺了。
+                // 支点再往前就会动到背鳍、胸鳍、眼睛——那些是独立 mesh，不会跟着弯。
+                const pvx = minx + span * 0.50;          // 弯曲支点：身体中段
+                let sy = 0, n = 0;
+                for (let i = 0; i < base.length; i += 3) {
+                    if (Math.abs(base[i] - pvx) < span * 0.03) { sy += base[i + 1]; n++; }
+                }
+                const pvy = n ? sy / n : 0;
+                const w = new Float32Array(base.length / 3);
+                const denom = (maxx - pvx) || 1;
+                for (let i = 0; i < w.length; i++) {
+                    const tt = Math.min(1, Math.max(0, (base[i * 3] - pvx) / denom));
+                    // 支点附近几乎是 0，越靠尾越陡：前半身不动，后半身逐渐跟上，
+                    // 这样肚子和背部与尾巴之间是一条连续曲线，不会「到某一点突然开始扭」。
+                    w[i] = tt * tt * tt * (tt * (tt * 6 - 15) + 10);   // smootherstep
+                }
+                return { arr, base, pvx, pvy, w, tipX: tailGroup.position.x, tipY: tailGroup.position.y };
+            })();
+
+            function applyTailBend(a) {
+                const { arr, base, pvx, pvy, w, tipX, tipY } = tailBend;
+                const ca = Math.cos(a), sa = Math.sin(a);
+                for (let i = 0, j = 0; i < w.length; i++, j += 3) {
+                    const wi = w[i];
+                    if (wi < 0.001) continue;
+                    const ang = a * wi;
+                    const c = Math.cos(ang), sn = Math.sin(ang);
+                    const dx = base[j] - pvx, dy = base[j + 1] - pvy;
+                    arr[j] = pvx + dx * c - dy * sn;
+                    arr[j + 1] = pvy + dx * sn + dy * c;
+                }
+                geo.attributes.position.needsUpdate = true;
+                const tdx = tipX - pvx, tdy = tipY - pvy;
+                tailGroup.position.x = pvx + tdx * ca - tdy * sa;
+                tailGroup.position.y = pvy + tdx * sa + tdy * ca;
+            }
+
+            // ==================== 背鳍（参照 deepseek logo） + 胸鳍（一对） ====================
+            function sampleSvgPath(d, samples = 40) {
+                const toks = d.match(/[MLCZ]|[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi);
+                let i = 0, x = 0, y = 0; const pts = [];
+                const num = () => parseFloat(toks[i++]);
+                const bez = (t, p0, p1, p2, p3) => { const mt = 1 - t; return mt*mt*mt*p0 + 3*mt*mt*t*p1 + 3*mt*t*t*p2 + t*t*t*p3; };
+                while (i < toks.length) { const c = toks[i++].toUpperCase(); if (c === 'M' || c === 'L') { x = num(); y = num(); pts.push({x,y}); } else if (c === 'C') { const c1x=num(),c1y=num(),c2x=num(),c2y=num(),ex=num(),ey=num(); for (let s=1;s<=samples;s++) { const t=s/samples; pts.push({x:bez(t,x,c1x,c2x,ex), y:bez(t,y,c1y,c2y,ey)}); } x=ex; y=ey; } }
+                if (pts.length > 0) pts.push({ x: pts[0].x, y: pts[0].y });
+                return pts;
+            }
+            function extrudePolygon3D(points2D, thickness, origin, axisX, axisY) {
+                const axisZ = new THREE.Vector3().crossVectors(axisX, axisY).normalize();
+                return buildRoundedFin(points2D, thickness, (x, y, z) => {
+                    return new THREE.Vector3().copy(origin)
+                        .addScaledVector(axisX, x)
+                        .addScaledVector(axisY, y)
+                        .addScaledVector(axisZ, z);
+                });
+            }
+            function backSurfaceAt(frac) {
+                const xsArr = bodySwept.xs, midArr = bodySwept.mid, radArr = bodySwept.rad;
+                const totalX = xsArr[xsArr.length - 1] - xsArr[0];
+                const x = xsArr[0] + totalX * frac;
+                let idx = 0; while (idx < xsArr.length - 1 && xsArr[idx + 1] < x) idx++;
+                const t = (x - xsArr[idx]) / (xsArr[idx + 1] - xsArr[idx] || 1);
+                const mid = midArr[idx] * (1 - t) + midArr[idx + 1] * t;
+                const rad = radArr[idx] * (1 - t) + radArr[idx + 1] * t;
+                return { x: x * scale, top: (mid + rad) * scale, mid: mid * scale, rad: rad * scale };
+            }
+
+            // —— 背鳍：logo 背部凸起的精确轮廓 ——
+            const DORSAL_PATH = "M 10.436 2.993 L 13.852 4.746 C 12.758 3.684, 13.995 2.812, 14.282 2.708 C 14.581 2.600, 14.386 2.229, 13.418 2.233 C 12.450 2.237, 11.565 2.562, 10.436 2.993 Z";
+            const DORSAL_BL = 10.436, DORSAL_BR = 13.852;
+            const dorsalSvg = sampleSvgPath(DORSAL_PATH, CONFIG.DORSAL_SAMPLES);
+            const by0 = backSurfaceAt(CONFIG.DORSAL_START_FRAC).top, by1 = backSurfaceAt(CONFIG.DORSAL_END_FRAC).top;
+            const dorsalPts = dorsalSvg.map(p => {
+                const u = (p.x - DORSAL_BL) / (DORSAL_BR - DORSAL_BL);
+                const baseY = 2.993 + u * (4.746 - 2.993);
+                const h = Math.max(0, (baseY - p.y) * CONFIG.DORSAL_HEIGHT_SCALE);
+                const frac = CONFIG.DORSAL_START_FRAC + u * (CONFIG.DORSAL_END_FRAC - CONFIG.DORSAL_START_FRAC);
+                const xsArr = bodySwept.xs;
+                const px = (xsArr[0] + (xsArr[xsArr.length - 1] - xsArr[0]) * frac) * scale;
+                const py = by0 + u * (by1 - by0) - CONFIG.DORSAL_SINK + h;
+                return { x: px, y: py };
+            });
+            const dorsalMat = new THREE.MeshBasicMaterial({ color: CONFIG.COLOR_BODY_BLUE, side: THREE.DoubleSide });
+            const dorsalFin = new THREE.Mesh(extrudePolygon3D(dorsalPts, CONFIG.DORSAL_THICKNESS, new THREE.Vector3(0, 0, 0), new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0)), dorsalMat);
+            model.add(dorsalFin);
+
+            // —— 胸鳍：logo 腹部凸起的轮廓，左右对称各一（包在 pivot 中以便摆动） ——
+            const PEC_PATH = "M 16.747 19.267 L 20.614 19.565 C 20.093 19.673, 19.421 19.772, 18.722 19.707 C 17.815 19.630, 17.268 19.526, 16.747 19.267 Z";
+            const PEC_BL = 16.747, PEC_BR = 20.614, PEC_DROP = 0.288;
+            const pecSvg = sampleSvgPath(PEC_PATH, 30);
+            const pecMat = new THREE.MeshBasicMaterial({ color: CONFIG.COLOR_BODY_BLUE, side: THREE.DoubleSide });
+            const pecAngle = CONFIG.PEC_RADIAN * Math.PI / 180;
+            const pecFins = [];
+            for (const side of [1, -1]) {
+                const s0 = backSurfaceAt(CONFIG.PEC_START_FRAC), s1 = backSurfaceAt(CONFIG.PEC_END_FRAC);
+                const r0 = s0.rad - CONFIG.PEC_SINK, r1 = s1.rad - CONFIG.PEC_SINK;
+                // 应用向外偏移（无向后偏移，由分数定位）
+                const Rh = new THREE.Vector3(
+                    s0.x + CONFIG.PEC_BACKWARD_OFFSET,
+                    s0.mid + r0 * Math.cos(pecAngle),
+                    side * (r0 * Math.sin(pecAngle) + CONFIG.PEC_OUTWARD_OFFSET)
+                );
+                const Rt = new THREE.Vector3(
+                    s1.x + CONFIG.PEC_BACKWARD_OFFSET,
+                    s1.mid + r1 * Math.cos(pecAngle),
+                    side * (r1 * Math.sin(pecAngle) + CONFIG.PEC_OUTWARD_OFFSET)
+                );
+                const rootLen = Rh.distanceTo(Rt);
+                const axisX = new THREE.Vector3().subVectors(Rt, Rh).normalize();
+                const outRaw = new THREE.Vector3(0, -Math.sin(CONFIG.PEC_ANGLE_DEG * Math.PI / 180), side * Math.cos(CONFIG.PEC_ANGLE_DEG * Math.PI / 180));
+                const axisY = outRaw.clone().addScaledVector(axisX, -outRaw.dot(axisX)).normalize();
+                const pec2D = pecSvg.map(p => {
+                    const u = (p.x - PEC_BL) / (PEC_BR - PEC_BL);
+                    const baseY = 19.267 + u * (19.565 - 19.267);
+                    const w = Math.max(0, (p.y - baseY) / PEC_DROP);
+                    return { x: u * rootLen + w * CONFIG.PEC_SWEEP, y: w * CONFIG.PEC_SPAN };
+                });
+                // 几何体直接用 axisX/axisY 定向（原点置于根部）；pivot 只做平移，保持单位旋转，
+                // 这样 pivot.rotation.x 是绕身体纵轴（世界 X 轴）的上下划水，而非绕根-梢轴拧转（参考 wave.html）
+                const finMesh = new THREE.Mesh(extrudePolygon3D(pec2D, CONFIG.PEC_THICKNESS, new THREE.Vector3(0, 0, 0), axisX, axisY), pecMat);
+                const pivot = new THREE.Group();
+                pivot.position.copy(Rh);
+                pivot.add(finMesh);
+                model.add(pivot);
+                pecFins.push(pivot);
+            }
+
+            console.log('胸鳍已放大10%并接入身体，现包在 pivot 中支持摆动。');
+
+            // 收集鳍/眼材质，按颜色分深色/浅色两组；身体 shader 由 bodyUniforms 单独处理
+            const darkMats = [], whiteMats = [];
+            model.traverse(m => {
+                if (!m.isMesh || !m.material || m.material === material) return;
+                const c = m.material.color;
+                if (!c) return;
+                if (c.getHex() === 0xffffff) whiteMats.push(m.material);
+                else darkMats.push(m.material);
+            });
+            function applySkin(dark, white) {
+                currentSkin = { dark, white };
+                if (bodyUniforms) {
+                    bodyUniforms.uDark.value.set(dark);
+                    bodyUniforms.uWhite.value.set(white);
+                }
+                darkMats.forEach(m => m.color.set(dark));
+                whiteMats.forEach(m => m.color.set(white));
+            }
+            function setSkin(name) {
+                if (name === 'custom') {
+                    currentSkinName = 'custom';
+                    let c = null;
+                    try { c = JSON.parse(localStorage.getItem('pet_skin_custom') || 'null'); } catch (e) {}
+                    if (c && typeof c.dark === 'number' && typeof c.white === 'number') applySkin(c.dark, c.white);
+                    else applySkin(SKINS.classic.dark, SKINS.classic.white);
+                } else {
+                    if (!SKINS[name]) name = 'classic';
+                    currentSkinName = name;
+                    applySkin(SKINS[name].dark, SKINS[name].white);
+                }
+                try { localStorage.setItem('pet_skin', currentSkinName); } catch (e) {}
+            }
+            function setCustomSkin(darkHex, whiteHex) {
+                const d = new THREE.Color(darkHex), w = new THREE.Color(whiteHex);
+                currentSkinName = 'custom';
+                applySkin(d.getHex(), w.getHex());
+                try {
+                    localStorage.setItem('pet_skin', 'custom');
+                    localStorage.setItem('pet_skin_custom', JSON.stringify({ dark: currentSkin.dark, white: currentSkin.white }));
+                } catch (e) {}
+            }
+            setSkin(currentSkinName); // 启动时应用已保存的皮肤
+            window.__petSetSkin = setSkin;
+            window.__petSetCustomSkin = setCustomSkin;
+
+            window.addEventListener('resize', () => {
+                camera.aspect = innerWidth / innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(innerWidth, innerHeight);
+            });
+            // ==================== 情绪系统 ====================
+            // 摆动幅度（身体 roll/yaw/pitch、尾鳍 yaw/pitch、胸鳍）分开调，尾鳍幅度刻意做小以防穿模
+            const MOODS = {
+                idle:          { speed: 1.6, floatAmp: 0.06, floatSpeed: 1.2, breath: 0.02, bodySway: 0.035, bodyYaw: 0.030, bodyPitch: 0.015, tailYaw: 0.080, tailPitch: 0.150, pecFlap: 0.18 },
+                working:       { speed: 3.4, floatAmp: 0.10, floatSpeed: 2.4, breath: 0.05, bodySway: 0.060, bodyYaw: 0.055, bodyPitch: 0.028, tailYaw: 0.150, tailPitch: 0.230, pecFlap: 0.28 },
+                'needs-input': { speed: 0.8, floatAmp: 0.03, floatSpeed: 0.6, breath: 0.01, bodySway: 0.018, bodyYaw: 0.015, bodyPitch: 0.008, tailYaw: 0.040, tailPitch: 0.080, pecFlap: 0.10 },
+                ready:         { speed: 2.6, floatAmp: 0.14, floatSpeed: 3.0, breath: 0.06, bodySway: 0.045, bodyYaw: 0.040, bodyPitch: 0.020, tailYaw: 0.120, tailPitch: 0.200, pecFlap: 0.24 },
+                blocked:       { speed: 0.5, floatAmp: 0.04, floatSpeed: 0.8, breath: 0.015, bodySway: 0.010, bodyYaw: 0.008, bodyPitch: 0.005, tailYaw: 0.020, tailPitch: 0.040, pecFlap: 0.06 },
+            };
+            let currentMood = 'idle';
+            let moodTarget = MOODS.idle;
+            const moodState = { speed: 1.6, floatAmp: 0.06, floatSpeed: 1.2, breath: 0.02, bodySway: 0.035, bodyYaw: 0.030, bodyPitch: 0.015, tailYaw: 0.080, tailPitch: 0.150, pecFlap: 0.18 };
+            const TAIL_BASE_Z = CONFIG.TAIL_TILT_DEG * Math.PI / 180;
+            const BASE_SWIM_HZ = 0.9; // 基础游动频率（参考 wave.html，温和游动）
+            function setMood(name) {
+                if (MOODS[name]) { currentMood = name; moodTarget = MOODS[name]; }
+            }
+
+            // ==================== 互动加速：悬停 / 单击 → 用力游 ====================
+            let hoverActive = false, clickBoost = 0, danceLevel = 0; // danceLevel: 音乐频谱驱动（温和）
+            let beatPulse = 0, spinRemaining = 0, spinAngle = 0; // 节拍脉冲 / 转圈角度
+            let danceFreq = 0.7; // 用户设定的跳舞强度 0-1（0=关闭，1=最强）
+            (function () { try { const v = parseFloat(localStorage.getItem('pet_dance_freq')); if (isFinite(v)) danceFreq = Math.max(0, Math.min(1, v)); } catch (e) {} })();
+            let isSleeping = false; // 睡眠状态（闭眼 + 动作减幅）
+            document.documentElement.addEventListener('mouseenter', () => { hoverActive = true; });
+            document.documentElement.addEventListener('mouseleave', () => { hoverActive = false; });
+            window.addEventListener('click', () => { clickBoost = 1; });
+
+            // 眨眼曲线：快速闭合（短促线性），缓慢睁开（缓入）
+            function blinkCurve(p) {
+                const c = 0.10, o = 0.42;
+                if (p < c) { const u = p / c; return 1 - u; }
+                if (p < c + o) { const u = (p - c) / o; return u * u; }
+                return 1;
+            }
+
+            const clock = new THREE.Clock();
+            // 跟随鼠标时的侧倾/点头。主进程按帧推来速度方向（{vx, vy} 归一化 -1~1），
+            // 这里平滑成实际角度再叠加到模型上 —— 没有这个，「窗口平移」看起来就是搬运，
+            // 有了它才像「身体朝着游的方向偏过去」。
+            const SWIM = { bank: 0, pitch: 0, targetBank: 0, targetPitch: 0, swim: 0, targetSwim: 0 };
+            window.__petSwim = SWIM;
+
+            // 朝向鼠标。这是个「剪纸」式 3D 模型（2D 侧影沿 Z 挤出厚度），
+            // 所以转身靠的是「绕竖轴转一点」而不是真的转到侧面——转 90° 就只剩
+            // 一条纸片边了。以前用「平面内歪身子 + 左右镜像」，看着像纸片翻面；
+            // 现在改成真正的 3D 转头：yaw（左右）+ pitch（上下）+ 一点点 tilt。
+            //
+            // 手靠近它的时候这些角度会一起收敛到 0 —— 也就是「嘴对着屏幕外」，
+            // 正对着你。这不是切换状态，是连续的插值。
+            // 待机转圈：鼠标长时间不动，它自己转一圈。lastCursorAt 在收到光标消息时刷新
+            let lastCursorAt = performance.now();
+            let idleSpinning = false;
+            let idleSpin = 0;
+            const IDLE_SPIN_AFTER = 150000;   // 2.5 分钟没动静
+
+            const FACE = {
+                // 3D 朝向：绕竖轴转头（yaw）、绕横轴点头（pitch）、平面内指向箭头（tilt）
+                yaw: 0, yawTarget: 0,
+                flip: 1,          // 1 = 头朝左（模型原生朝向），-1 = 转过去朝右
+                // 启动后 1 秒内不跟光标转向：否则第一帧就被光标位置决定朝哪边，
+                // 看起来像「每次启动朝向都是随机的」。锁定期内固定朝左。
+                lockUntil: (typeof performance !== 'undefined' ? performance.now() : 0) + 1000,
+                // 原来的 scale.x 镜像换成了「真的绕竖轴转 180°」：这只鲸鱼的眼镜和眉毛
+                // 本来就做了正反两面（buildEyeMesh/BrowMesh 各建了 flip=false/true 两份），
+                // 所以转过去看到的是另一侧的完整脸，不是光秃秃的背面。
+                baseShown: 0,     // 当前实际转到了多少弧度（0 或 π）
+                turnFrom: 0,      // 这次转身的起点
+                turnTo: 0,        // 这次转身的终点
+                turnT: 0,         // 转身进度 0~1（0 = 没在转）
+                pitch: 0, pitchTarget: 0,
+                tilt: 0, tiltTarget: 0,
+                // 手离它多近（0 远 / 1 贴脸）：远处朝鼠标，贴脸时一切归零、嘴朝屏幕外
+                nearTarget: 0,
+            };
+            window.__petFace = FACE;
+            let blinkPhase = Math.random();
+            let prevT = 0;
+
+            // 跳舞音符粒子（从头顶冒出，CSS 动画上飘淡出）
+            function spawnNote() {
+                const chars = ['♪', '♫', '♩', '♬'];
+                const note = document.createElement('div');
+                note.className = 'pet-note';
+                note.textContent = chars[Math.floor(Math.random() * chars.length)];
+                note.style.setProperty('--dx', ((Math.random() - 0.5) * 56).toFixed(0) + 'px');
+                const app = document.getElementById('app');
+                if (app) app.appendChild(note);
+                note.addEventListener('animationend', () => { note.remove(); });
+            }
+            function animate() {
+                requestAnimationFrame(animate);
+                const t = clock.getElapsedTime();
+                const dt = Math.min(t - prevT, 0.1); prevT = t;
+                const rate = 0.04;
+                moodState.speed += (moodTarget.speed - moodState.speed) * rate;
+                moodState.floatAmp += (moodTarget.floatAmp - moodState.floatAmp) * rate;
+                moodState.floatSpeed += (moodTarget.floatSpeed - moodState.floatSpeed) * rate;
+                moodState.breath += (moodTarget.breath - moodState.breath) * rate;
+                moodState.bodySway += (moodTarget.bodySway - moodState.bodySway) * rate;
+                moodState.bodyYaw += (moodTarget.bodyYaw - moodState.bodyYaw) * rate;
+                moodState.bodyPitch += (moodTarget.bodyPitch - moodState.bodyPitch) * rate;
+                moodState.tailYaw += (moodTarget.tailYaw - moodState.tailYaw) * rate;
+                moodState.tailPitch += (moodTarget.tailPitch - moodState.tailPitch) * rate;
+                moodState.pecFlap += (moodTarget.pecFlap - moodState.pecFlap) * rate;
+                clickBoost += (0 - clickBoost) * 0.02;
+                SWIM.bank += (SWIM.targetBank - SWIM.bank) * 0.12;
+                SWIM.pitch += (SWIM.targetPitch - SWIM.pitch) * 0.12;
+                // 转向的缓动按 dt 折算，不按帧算：这块屏是 240Hz，写死「每帧 0.08」
+                // 会比设计快四倍，手一靠近它就"弹"过去了，看着一点都不丝滑。
+                const kFac = (rate) => 1 - Math.pow(1 - rate, dt * 60);
+                // 待机转圈：鼠标 2.5 分钟没动就绕竖轴转一圈，转完重新计时
+                // 待机翻滚：头先向上仰、翻到身后、再从下面转回来。绕的是横轴（pitch 轴）。
+                if (idleSpinning) {
+                    idleSpin += dt * 2.0;
+                    if (idleSpin >= Math.PI * 2) {
+                        idleSpin = 0; idleSpinning = false; lastCursorAt = performance.now();
+                        if (window.petWindow && window.petWindow.setSpinning) window.petWindow.setSpinning(false);
+                    }
+                } else if (window.__petIsSleeping) {
+                    // 睡着的时候不算「待机计时」，醒了重新数
+                    lastCursorAt = performance.now();
+                } else if (performance.now() - lastCursorAt > IDLE_SPIN_AFTER) {
+                    // 待机到一个点了：翻滚和睡觉二选一，绝不同时来
+                    lastCursorAt = performance.now();
+                    if (Math.random() < 0.5) {
+                        idleSpinning = true; idleSpin = 0;
+                        if (window.petWindow && window.petWindow.setSpinning) window.petWindow.setSpinning(true);
+                    } else if (window.__petIdleSleep) {
+                        window.__petIdleSleep(30000 + Math.random() * 30000);
+                    }
+                }
+                // 转身：0° → 180° 一路转过去，不回头、不镜像。因为模型正反两面都有
+                // 眼睛和眉毛，转过 180° 看到的是"另一侧的脸"，而不是空白的背面。
+                // 用 smoothstep：起步和收尾都慢，中间快，像物体转身该有的节奏。
+                let turnYaw = FACE.baseShown;
+                if (FACE.turnT > 0) {
+                    FACE.turnT += dt / 0.85;
+                    const tt = Math.min(FACE.turnT, 1);
+                    const e = tt * tt * (3 - 2 * tt);
+                    turnYaw = FACE.turnFrom + (FACE.turnTo - FACE.turnFrom) * e;
+                    if (FACE.turnT >= 1) {
+                        FACE.turnT = 0;
+                        FACE.baseShown = FACE.turnTo;
+                        turnYaw = FACE.baseShown;
+                    }
+                }
+                FACE.yaw += (FACE.yawTarget - FACE.yaw) * kFac(0.06);
+                FACE.pitch += (FACE.pitchTarget - FACE.pitch) * kFac(0.06);
+                FACE.tilt += (FACE.tiltTarget - FACE.tilt) * kFac(0.075);
+                danceLevel += (0 - danceLevel) * 0.06; // 音乐能量平滑
+                beatPulse += (0 - beatPulse) * 0.12;   // 节拍脉冲快速衰减
+
+                // 悬停/单击的 boost；音乐不再放大游动，只做小幅叠加偏移（参考 F:\works）
+                const boost = Math.max(hoverActive ? 0.25 : 0, clickBoost);
+                const d = danceLevel * danceFreq; // 有效跳舞强度（含用户频率设置）
+                const sleepF = isSleeping ? 0.2 : 1; // 睡眠时动作减幅
+                const fMul = 1 + 0.4 * boost;
+                const aMul = 1 + 0.45 * boost;
+                const w = BASE_SWIM_HZ * fMul * Math.PI * 2;
+
+                // 转圈：节拍触发，偶尔整圈旋转
+                if (spinRemaining > 0) {
+                    const step = 9 * dt;
+                    spinAngle += step;
+                    spinRemaining -= step;
+                    if (spinRemaining <= 0) {
+                        spinAngle = Math.round(spinAngle / (Math.PI * 2)) * (Math.PI * 2);
+                        spinRemaining = 0;
+                    }
+                }
+
+                // 节拍包络（0→1→0），用于打拍子的弹跳/甩尾/扑腾
+                const beatEnv = Math.sin(Math.min(1, beatPulse) * Math.PI);
+
+                // —— 身体：roll(z) + yaw(y) + pitch(x)，yaw 叠加转圈 + 音乐小幅偏移 ——
+                const roll = moodState.bodySway * aMul * sleepF;
+                model.rotation.z = roll * (Math.sin(t * w) + 0.4 * Math.sin(t * w * 2 + 1.3)) + d * 0.05 * Math.sin(t * w * 2 + 1.0) + SWIM.bank;
+                const yaw = moodState.bodyYaw * aMul * sleepF;
+                // 摆正时的 3D 感：把「头还差多少角度没转到位」耦合一点到绕竖轴的转动上。
+                // 平着转过去是 2D 的，加上这一下就像绕着自己的竖轴拧了一下再摆正 ——
+                // 误差归零它自然回 0，不需要额外的状态机。
+                const swingYaw = Math.max(-0.28, Math.min(0.28, (FACE.tiltTarget - FACE.tilt) * 0.22));
+                model.rotation.y = yaw * (Math.sin(t * w + 0.5) + 0.4 * Math.sin(t * w * 2 + 2.4)) + spinAngle + d * 0.04 * Math.sin(t * w * 1.5 + 0.5) + FACE.yaw + turnYaw + swingYaw;
+                const pitch = moodState.bodyPitch * aMul * sleepF;
+                model.rotation.x = pitch * (Math.sin(t * w + 0.8) + 0.4 * Math.sin(t * w * 2 + 0.3)) + SWIM.pitch + FACE.pitch + idleSpin;
+
+                // —— 漂浮 + 呼吸 + 节拍弹跳（音乐小幅上浮） ——
+                model.position.y = Math.sin(t * moodState.floatSpeed) * moodState.floatAmp * (1 + 0.3 * boost) * (isSleeping ? 0.5 : 1)
+                    + beatEnv * 0.12 * beatPulse * danceFreq + d * 0.06;
+                const s = 1 + Math.sin(t * moodState.floatSpeed * 1.6) * moodState.breath;
+                model.scale.set(s, s, s);
+                // 朝向鼠标的俯仰放在父分组上：镜像（scale.x 为负）之后再做旋转，
+                // 视觉方向才不会被镜像翻反。绕的原点就是虎鲸自己的中心。
+                petGroup.rotation.z = FACE.tilt;
+
+                // —— 尾巴：整条一起上下弯 + 尾巴尖左右摆 + 节拍甩尾 ——
+                const ty = moodState.tailYaw * aMul * sleepF;
+                tailGroup.rotation.y = ty * (Math.sin(t * w + 0.7) + 0.5 * Math.sin(t * w * 2 + 1.9))
+                    + beatEnv * 0.06 * beatPulse * danceFreq;
+                // 上下摆交给整体弯曲（身体尾段 + 尾鳍一起），不再是尾鳍单独翻转。
+                // 幅度做成不对称的：往上收着（55%），往下放开（120%）——
+                // 鲸鱼摆尾本来也是往下压得重、抬头轻，对称摆反而像在打拍子。
+                const tp = moodState.tailPitch * aMul * sleepF;
+                // 二次谐波压到 0.15：原来 0.5 会让下降沿鼓出一个小包，
+                // 看起来像落下去之后又弹了一下。现在接近纯正弦，下去就是下去。
+                const swRaw = Math.sin(t * w + 1.2) + 0.15 * Math.sin(t * w * 2 + 0.5);
+                const amp = (tp + 0.06) * 0.85;   // 总摆幅略收一点
+                // 上轻下重，再加一个恒定的下垂偏置：整条尾巴平时就压得低一些，
+                // 往下摆才有力道，抬起来只是回来。
+                // 只在游动时摆尾：swim 0~1 用指数缓动过渡（约 0.45 秒），
+                // 停下来时会慢慢收住而不是突然定格。
+                // 主进程只在「朝向变了」时才推消息，静止后就不发了 ——
+                // 收不到新消息超过半秒就当它停了，尾巴收住。
+                if (performance.now() - (SWIM.lastAt || 0) > 500) SWIM.targetSwim = 0;
+                const swimK = 1 - Math.pow(0.0001, dt / 0.45);   // dt 是秒，0.45 秒过渡
+                SWIM.swim += (SWIM.targetSwim - SWIM.swim) * Math.min(1, swimK);
+                // 留 12% 的底：静止时不是完全不动，而是很轻的一点点浮动；
+                // 游起来再推到 100%。完全静止会显得像模型卡住了。
+                const swingPart = (swRaw >= 0 ? swRaw * amp * 0.50 : swRaw * amp * 1.50) * (0.12 + 0.88 * SWIM.swim);
+                const bendA = swingPart - 0.300;   // 偏置不乘：静止时保持那条下垂的静态姿态
+                applyTailBend(bendA);
+                tailGroup.rotation.z = TAIL_BASE_Z + bendA;
+                tailGroup.rotation.x = 0;
+
+                // —— 胸鳍：划水 + 节拍扑腾 ——
+                const pf = moodState.pecFlap * aMul * sleepF;
+                const pecVal = pf * (Math.sin(t * w + 0.6) + 0.5 * Math.sin(t * w * 2 + 1.8))
+                    + beatEnv * 0.15 * beatPulse * danceFreq + d * 0.12 * sleepF;
+                for (const piv of pecFins) piv.rotation.x = pecVal;
+
+                // —— 眨眼 / 睡眠闭眼 / 被摸时眯成笑眼 ——
+                const petting = (window.__petPetting || 0) > performance.now();
+                if (isSleeping) {
+                    for (const piv of eyePivots) { piv.scale.y = 0.10; piv.scale.x = 1; piv.rotation.z = 0; }
+                } else if (petting) {
+                    // 眯起来、横向拉宽一点、再向上歪一点 —— 一条上扬的弧，像在笑
+                    for (const piv of eyePivots) {
+                        piv.scale.y = 0.30;
+                        piv.scale.x = 1.16;
+                        piv.rotation.z = 0.22;
+                    }
+                } else {
+                    const blinkPeriod = 4.3 / (1 + 0.25 * boost);
+                    const bp = ((t + blinkPhase) % blinkPeriod) / blinkPeriod;
+                    const eyeOpen = 0.06 + 0.94 * blinkCurve(bp);
+                    for (const piv of eyePivots) { piv.scale.y = eyeOpen; piv.scale.x = 1; piv.rotation.z = 0; }
+                }
+
+                // —— 被摸时身体轻轻抖：横向高频小幅位移 ——
+                model.position.x = petting ? Math.sin(t * 58) * 0.035 : 0;
+
+                controls.update();
+                renderer.render(scene, camera);
+            }
+            animate();
+            window.__petSetMood = setMood;
+            window.__petMood = function () { return currentMood; };
+            window.__petSetDance = function (lvl) { danceLevel = Math.max(0, Math.min(1, Number(lvl) || 0)); };
+            window.__petSetDanceFreq = function (v) {
+                danceFreq = Math.max(0, Math.min(1, Number(v) || 0));
+                try { localStorage.setItem('pet_dance_freq', danceFreq); } catch (e) {}
+            };
+            window.__petOnBeat = function () {
+                if (danceFreq <= 0) return;
+                beatPulse = 1;
+                spawnNote();
+                if (spinRemaining <= 0 && Math.random() < 0.2) spinRemaining = Math.PI * 2; // 约 20% 概率转圈
+            };
+            // 给桥接层用：窗口内某个像素点是不是落在鲸鱼模型上。
+            // 用光线检测而不是固定的椭圆命中区 —— 椭圆比模型大一圈，那一圈就成了
+            // 「模型周围点不穿」的区域；射线能精确到尾鳍、胸鳍这些细条。
+            const _raycaster = new THREE.Raycaster();
+            const _ndc = new THREE.Vector2();
+            window.__petHitTest = function (px, py) {
+                const w = window.innerWidth || 1, h = window.innerHeight || 1;
+                _ndc.set((px / w) * 2 - 1, -(py / h) * 2 + 1);
+                _raycaster.setFromCamera(_ndc, camera);
+                return _raycaster.intersectObject(petGroup, true).length > 0;
+            };
+
+            // 体型缩放。注意：正常流程里主进程只放大窗口、这里保持 1 ——
+            // 相机视角固定，窗口变大模型在屏幕上自然就变大；这里再乘一次会双重放大。
+            // 留着这个接口是为了以后想「窗口不变、只放大模型」时能用。
+
+            let sizeFactor = 1;
+            window.__petSetScale = function (k) {
+                sizeFactor = Math.max(0.4, Math.min(2.5, Number(k) || 1));
+                petGroup.scale.setScalar(CONFIG.MODEL_SCALE * sizeFactor);
+            };
+
+            // 任务栏图标：和 DSH 侧边栏那个 🐋 保持一致
+            (function sendIcon() {
+                try {
+                    const c = document.createElement('canvas');
+                    c.width = 256;
+                    c.height = 256;
+                    const ctx = c.getContext('2d');
+                    if (!ctx) return;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.font = '192px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
+                    ctx.fillText('🐋', 128, 138);
+                    const url = c.toDataURL('image/png');
+                    if (window.petWindow && window.petWindow.setIcon) window.petWindow.setIcon(url);
+                } catch { /* 画不出来就用系统默认图标 */ }
+            })();
+
+            window.__petSetSleeping = function (on) { isSleeping = !!on; };
+            window.__petHappy = function () { beatPulse = 1; }; // 投喂/爱心触发一次欢快扑腾
+        })();
+    </script>
+    <script>
+        // ==================== 气泡与互动 ====================
+        (function () {
+            const bubble = document.createElement('div');
+            bubble.className = 'bubble';
+            document.body.appendChild(bubble);
+            let bubbleTimer = null;
+            const petEvents = {};
+
+            // 气泡出现在「头那一侧」的上方，尾巴朝下指着脑袋 —— 看起来就是从嘴里冒出来的。
+            // 头朝左（flip=1）就偏左，朝右就偏右；正在转身的那 0.85 秒里回到中间。
+            function placeBubble() {
+                const f = window.__petFace || {};
+                let side = f.flip === -1 ? 1 : -1;
+                if (f.turnT > 0) side = 0;
+                const half = window.innerWidth / 2;
+                // 按气泡的真实宽度夹边界：之前写死 ±90，气泡一长就会有一边探出窗口被裁掉。
+                // 必须在 textContent 赋值之后再调用，不然量到的是旧宽度。
+                const bw = bubble.offsetWidth || 0;
+                const margin = 10;
+                const lo = bw / 2 + margin;
+                const hi = window.innerWidth - bw / 2 - margin;
+                let x = half + side * window.innerWidth * 0.19;
+                x = Math.min(Math.max(x, lo), Math.max(lo, hi));
+                bubble.style.left = Math.round(x) + 'px';
+            }
+
+            // 说话时从头顶冒几个粉色爱心；流式回复会连着调 show，节流一下别刷屏
+            let lastSpeechHeartAt = 0;
+            function spawnSpeechHearts(force) {
+                const now = performance.now();
+                if (!force && now - lastSpeechHeartAt < 1500) return;
+                if (window.__petIsSleeping) return;      // 睡着不冒
+                lastSpeechHeartAt = now;
+                for (let i = 0; i < 3; i++) {
+                    setTimeout(function () {
+                        const d = document.createElement('div');
+                        d.className = 'heart-particle';
+                        d.textContent = '💗';
+                        d.style.left = (42 + Math.random() * 18) + '%';
+                        d.style.top = (27 + Math.random() * 9) + '%';
+                        d.style.fontSize = (12 + Math.random() * 7) + 'px';
+                        d.style.setProperty('--dx', ((Math.random() - 0.5) * 28).toFixed(0) + 'px');
+                        document.body.appendChild(d);
+                        d.addEventListener('animationend', function () { d.remove(); });
+                        setTimeout(function () { d.remove(); }, 1800);
+                    }, i * 130);
+                }
+            }
+
+            window.__petHearts = spawnSpeechHearts;
+
+            window.__petShow = null   // 由下面定义后赋值，供别的闭包调用
+            function show(text, ms) {
+                bubble.textContent = text;       // 先填字，placeBubble 才能量到真实宽度
+                placeBubble();
+                spawnSpeechHearts();
+                bubble.classList.add('show');
+                bubble.scrollTop = bubble.scrollHeight; // 长回复自动滚到底部
+                clearTimeout(bubbleTimer);
+                if (ms) bubbleTimer = setTimeout(function () { bubble.classList.remove('show'); }, ms);
+            }
+            window.__petShow = show
+            window.Pet = {
+                setMood: window.__petSetMood || function () {},
+                mood: function () { return window.__petMood ? window.__petMood() : 'idle'; },
+                say: show,
+                hide: function () { bubble.classList.remove('show'); },
+                on: function (ev, cb) { (petEvents[ev] = petEvents[ev] || []).push(cb); },
+                emit: function (ev, arg) { (petEvents[ev] || []).forEach(function (cb) { cb(arg); }); },
+            };
+            const LINES = ['你好呀，我是小虎鲸！', '有事要我帮忙吗？', '摸鱼中，别打扰我~', '盯——你在看什么呀？'];
+            // 小游戏进行中说的话，和平时那套台词分开
+            const GAME_LINES = {
+                eat: ['好吃！', '再来一条', '嗯……鲜', '这条不错', '还要！'],
+                click: ['别闹，我在捕猎', '鱼呢？', '等我抓到再说'],
+                pet: ['等我吃完嘛', '别闹，正忙着呢', '痒痒的'],
+            };
+            window.__petGameLine = function (kind) {
+                const pool = GAME_LINES[kind];
+                if (!pool || !pool.length) return '';
+                return pool[Math.floor(Math.random() * pool.length)];
+            };
+            // 隔一阵子自己冒一句：日常、正向、不吵人。
+            const IDLE_LINES = [
+                '今天也辛苦啦，我在这儿呢',
+                '你专心的时候，我就在旁边慢慢游',
+                '刚才那个转身帅吧？',
+                '有点想吃小鱼干……',
+                '坐久啦，起来伸个懒腰嘛',
+                '我不吵你，就看看你',
+                '被你发现我在偷看你了',
+                '我刚才打了个哈欠，你也打一个？',
+                '累了就歇会儿，我帮你看着屏幕',
+                '水底很安静的，适合想事情',
+                '今天也做得很好哦，我说了算',
+                '要不要摸摸我？我头很软的',
+                '别急，慢慢来，我陪着你',
+                '我数了一下，你已经认真很久了',
+            ];
+            let idleChatTimer = null;
+            function scheduleIdleChat() {
+                clearTimeout(idleChatTimer);
+                idleChatTimer = setTimeout(function () {
+                    // 正在说别的话（比如流式回复）就不插嘴
+                    if (!bubble.classList.contains('show') && !window.__petIsSleeping && !window.__petGameMode) {
+                        show(IDLE_LINES[Math.floor(Math.random() * IDLE_LINES.length)], 5200);
+                    }
+                    scheduleIdleChat();
+                }, 30000 + Math.random() * 40000);   // 30~70 秒一句
+            }
+            scheduleIdleChat();
+            // ===== 手势：按住拖动窗口，位移 < 6px 视为单击 =====
+            const drag = { down: false, sx: 0, sy: 0, moved: false };
+            const rclick = { down: false, sx: 0, sy: 0, moved: false };
+            window.addEventListener('mousedown', function (e) {
+                if (e.button === 0) {
+                    drag.down = true; drag.sx = e.screenX; drag.sy = e.screenY; drag.moved = false;
+                    if (window.petWindow) window.petWindow.dragStart(); // 主进程缓存 getBounds 并锁尺寸
+                } else if (e.button === 2) {
+                    rclick.down = true; rclick.sx = e.clientX; rclick.sy = e.clientY; rclick.moved = false;
+                    // 让窗口立刻站住：漫游时它一直在游，右键按下和松开之间会挪开
+                    if (window.petWindow && window.petWindow.holdStill) window.petWindow.holdStill(2500);
+                }
+            });
+            window.addEventListener('mousemove', function (e) {
+                if (drag.down) {
+                    const dx = e.screenX - drag.sx, dy = e.screenY - drag.sy; // 相对起点的总位移
+                    if (!drag.moved && Math.abs(dx) + Math.abs(dy) > 6) drag.moved = true;
+                    if (drag.moved && window.petWindow) window.petWindow.dragMove(dx, dy);
+                }
+                if (rclick.down) {
+                    if (Math.abs(e.clientX - rclick.sx) + Math.abs(e.clientY - rclick.sy) > 6) rclick.moved = true;
+                }
+            });
+            window.addEventListener('mouseup', function (e) {
+                if (drag.down) {
+                    drag.down = false;
+                    if (window.petWindow) window.petWindow.dragEnd(drag.moved);
+                    if (!drag.moved) {
+                        if (sleeping) {
+                            setSleeping(false);
+                            playSound('wake');
+                            show('醒啦', 2000);
+                        } else if (actionBubbles.classList.contains('open')) {
+                            // 面板开着的时候再点一下 = 收起，而不是又弹一遍
+                            if (window.__petHidePanel) window.__petHidePanel();
+                        } else {
+                            playSound('click');
+                            const clickLine = window.__petGameMode && window.__petGameLine
+                                ? window.__petGameLine('click')
+                                : LINES[Math.floor(Math.random() * LINES.length)];
+                            show(clickLine, 3000);
+                            window.Pet.emit('click');
+                            showActionBubbles();
+                        }
+                    }
+                }
+                if (rclick.down) {
+                    rclick.down = false;
+                    if (!rclick.moved && window.petWindow && window.petWindow.menuRequest) {
+                        window.petWindow.menuRequest();   // 右键单击 → 自绘菜单窗口
+                    }
+                }
+            });
+            // 兜底：拖动中失焦（系统弹窗抢焦点等）也要收尾，防止拖动状态卡死
+            window.addEventListener('blur', function () {
+                if (drag.down && drag.moved) {
+                    drag.down = false;
+                    if (window.petWindow) window.petWindow.dragEnd(true);
+                }
+                rclick.down = false;
+            });
+            // ===== 音效：Web Audio 合成海豚音（不同互动不同声音） =====
+            let soundCtx = null;
+            function getSoundCtx() {
+                if (!soundCtx) {
+                    try { soundCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { soundCtx = null; }
+                }
+                if (soundCtx && soundCtx.state === 'suspended') soundCtx.resume().catch(function () {});
+                return soundCtx;
+            }
+            function tone(start, f0, f1, dur, type, vol) {
+                const ctx = getSoundCtx();
+                if (!ctx) return;
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = type || 'sine';
+                osc.frequency.setValueAtTime(Math.max(1, f0), start);
+                if (f1 !== f0) osc.frequency.exponentialRampToValueAtTime(Math.max(1, f1), start + dur);
+                gain.gain.setValueAtTime(0.0001, start);
+                gain.gain.exponentialRampToValueAtTime(vol, start + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.start(start); osc.stop(start + dur + 0.05);
+            }
+            function playSound(kind) {
+                try {
+                    const ctx = getSoundCtx();
+                    if (!ctx) return;
+                    const now = ctx.currentTime;
+                    if (kind === 'click') {
+                        // 海豚"啾~"：先升后降的口哨
+                        tone(now, 600, 1600, 0.14, 'sine', 0.16);
+                        tone(now + 0.06, 1800, 2400, 0.08, 'sine', 0.10);
+                        tone(now + 0.15, 1600, 900, 0.12, 'sine', 0.12);
+                    } else if (kind === 'feed') {
+                        // 吃东西"咕噜"：两下快速下行
+                        tone(now, 900, 500, 0.10, 'sine', 0.14);
+                        tone(now + 0.09, 700, 350, 0.10, 'sine', 0.14);
+                    } else if (kind === 'heart') {
+                        // 开心"欢快颤音"：上行三连音
+                        tone(now, 800, 1200, 0.08, 'triangle', 0.14);
+                        tone(now + 0.07, 1100, 1500, 0.08, 'triangle', 0.14);
+                        tone(now + 0.14, 1400, 2000, 0.10, 'triangle', 0.14);
+                    } else if (kind === 'sleep') {
+                        // 睡意"轻柔下行摇篮曲"
+                        tone(now, 700, 400, 0.30, 'sine', 0.10);
+                        tone(now + 0.25, 500, 300, 0.30, 'sine', 0.08);
+                    } else if (kind === 'wake') {
+                        // 醒来"上行问候"
+                        tone(now, 500, 900, 0.10, 'sine', 0.13);
+                        tone(now + 0.08, 900, 1500, 0.12, 'sine', 0.13);
+                    }
+                } catch (e) {}
+            }
+
+            // ===== 互动泡泡：投喂 / 爱心 / 睡眠 =====
+            const actionBubbles = document.getElementById('action-bubbles');
+            let bubblesTimer = null;
+            function setPanelOpen(on) {
+                if (window.petWindow && window.petWindow.setPanelOpen) window.petWindow.setPanelOpen(on);
+            }
+            function showActionBubbles() {
+                setPanelOpen(true);                 // 让主进程放开左侧那一条命中区
+                actionBubbles.classList.add('open');
+                keepActionBubbles();
+            }
+            // 面板和派活输入框共用一个计时器：谁在活跃就重新计时，到点一起收。
+            function keepActionBubbles() {
+                if (bubblesTimer) clearTimeout(bubblesTimer);
+                bubblesTimer = setTimeout(hideActionBubbles, 8000);
+            }
+            window.__petKeepPanel = keepActionBubbles;
+            function hideActionBubbles() {
+                setPanelOpen(false);
+                actionBubbles.classList.remove('open');
+                if (bubblesTimer) { clearTimeout(bubblesTimer); bubblesTimer = null; }
+                if (window.__petCloseInput) window.__petCloseInput();   // 输入框跟着一起消失
+            }
+            window.__petHidePanel = hideActionBubbles;
+
+            let sleeping = false;
+            let zzzTimer = null;
+            let idleSleepUntil = 0;      // >0 表示是「待机睡着」，到点自动醒
+            function setSleeping(on) {
+                sleeping = !!on;
+                window.__petIsSleeping = sleeping;      // 给气泡/爱心那边判断用
+                if (window.__petSetSleeping) window.__petSetSleeping(sleeping);
+                if (window.petWindow && window.petWindow.setSleeping) window.petWindow.setSleeping(sleeping);
+                if (sleeping) {
+                    if (zzzTimer) clearInterval(zzzTimer);
+                    zzzTimer = setInterval(function () { if (sleeping) spawnZzz(); }, 2200);
+                    spawnZzz();
+                } else {
+                    if (zzzTimer) { clearInterval(zzzTimer); zzzTimer = null; }
+                    idleSleepUntil = 0;
+                }
+            }
+            // 待机睡觉：睡 30~60 秒自己醒
+            // 摸摸也能叫醒（供桥接层的晃动检测调用）
+            window.__petWake = function () {
+                if (!sleeping) return false;
+                setSleeping(false);
+                return true;
+            };
+            window.__petIdleSleep = function (ms) {
+                if (sleeping) return;
+                setSleeping(true);
+                idleSleepUntil = performance.now() + Math.max(5000, ms);
+            };
+            setInterval(function () {
+                if (sleeping && idleSleepUntil && performance.now() > idleSleepUntil) {
+                    setSleeping(false);
+                }
+            }, 1000);
+            // 吃鱼的反应和「喂食」完全一致：小鱼游进嘴里 + 欢快扑腾 + 好吃！
+            window.__petEatFish = function () {
+                spawnFish();
+                if (window.__petHappy) window.__petHappy();
+                playSound('feed');
+                show(window.__petGameLine ? (window.__petGameLine('eat') || '好吃！') : '好吃！', 2000);
+            };
+            function spawnFish() {
+                const d = document.createElement('div');
+                d.className = 'fish-particle';
+                d.textContent = '🐟';
+                d.style.left = '18%';
+                d.style.top = '42%';
+                d.style.fontSize = '20px';
+                document.body.appendChild(d);
+                d.addEventListener('animationend', function () { d.remove(); });
+                setTimeout(function () { d.remove(); }, 1000);
+            }
+            function spawnHearts() {
+                for (let i = 0; i < 6; i++) {
+                    setTimeout(function () {
+                        const d = document.createElement('div');
+                        d.className = 'heart-particle';
+                        d.textContent = '💗';
+                        d.style.left = (30 + Math.random() * 40) + '%';
+                        d.style.top = (35 + Math.random() * 15) + '%';
+                        d.style.fontSize = (14 + Math.random() * 8) + 'px';
+                        d.style.setProperty('--dx', ((Math.random() - 0.5) * 40).toFixed(0) + 'px');
+                        document.body.appendChild(d);
+                        d.addEventListener('animationend', function () { d.remove(); });
+                        setTimeout(function () { d.remove(); }, 1600);
+                    }, i * 100);
+                }
+            }
+            function spawnZzz() {
+                if (!sleeping) return;
+                const d = document.createElement('div');
+                d.className = 'zzz-particle';
+                d.textContent = ['z', 'z', 'Z'][Math.floor(Math.random() * 3)];
+                d.style.left = (40 + Math.random() * 30) + '%';
+                d.style.top = (26 + Math.random() * 12) + '%';
+                d.style.fontSize = (16 + Math.random() * 12) + 'px';
+                d.style.setProperty('--dx', ((Math.random() - 0.5) * 24).toFixed(0) + 'px');
+                document.body.appendChild(d);
+                d.addEventListener('animationend', function () { d.remove(); });
+                setTimeout(function () { d.remove(); }, 2600);
+            }
+            actionBubbles.addEventListener('click', function (e) {
+                const btn = e.target.closest('.action-bubble');
+                if (!btn) return;
+                const act = btn.dataset.action;
+                hideActionBubbles();
+                if (act === 'sleep') {
+                    setSleeping(!sleeping);
+                    playSound(sleeping ? 'sleep' : 'wake');
+                    show(sleeping ? '晚安，我睡啦~' : '醒啦~', 2000);
+                } else if (act === 'feed') {
+                    window.__petEatFish();
+                } else if (act === 'pet') {
+                    spawnHearts();
+                    if (window.__petHappy) window.__petHappy();
+                    playSound('heart');
+                    show('嘿嘿~', 2000);
+                }
+            });
+
+            window.Pet.emit('ready');
+        })();
+    </script>
+    <script>
+        // ==================== harness 桥接与互动（P2/P3） ====================
+        (function () {
+            const bridge = window.petBridge;
+
+            // ---- 启动自检：渲染层引用的通道必须真的存在 ----
+            // 这套代码有两个桥对象（petWindow 管窗口/游戏，petBridge 管业务消息），
+            // 名字很像，接错了不会报错、只是回调永远不触发（吃鱼不说话就是这么坏的，
+            // 查了半天）。所以启动时把用到的名字全点一遍，缺哪个直接报出来。
+            (function selfCheck() {
+                const want = {
+                    petWindow: [
+                        'dragStart', 'dragMove', 'dragEnd',
+                        'menuRequest', 'menuClose', 'menuAction', 'menuResize', 'onMenuState',
+                        'setIcon', 'holdStill', 'setPanelOpen',
+                        'dropFish', 'exitGame', 'onFishSync', 'onFishEaten', 'onGameMode',
+                        'setSpinning', 'setSleeping', 'onCursor', 'reportHit',
+                    ],
+                    petBridge: [
+                        'onMood', 'onConnection', 'onAbortSpin', 'onSwim',
+                        'onLog', 'onReply', 'onBalance', 'queryBalance',
+                        'onStream', 'prompt',
+                        'onSetSkin', 'onSetCustomSkin', 'onSetSize', 'onSetDanceFreq',
+                    ],
+                };
+                const missing = [];
+                for (const objName of Object.keys(want)) {
+                    const obj = window[objName];
+                    if (!obj) { missing.push(objName + '（整个对象缺失）'); continue; }
+                    for (const m of want[objName]) {
+                        if (typeof obj[m] !== 'function') missing.push(objName + '.' + m);
+                    }
+                }
+                window.__petSelfCheck = missing;
+                if (missing.length) {
+                    console.warn('[pet] 通道缺失 ' + missing.length + ' 个：' + missing.join(', '));
+                } else {
+                    console.log('[pet] 通道自检通过');
+                }
+            })();
+            if (!bridge) return;
+            // ---- 情绪驱动动画 + 音效 ----
+            const SOUNDS = {
+                working: { freq: [520, 660], dur: 0.09 },
+                ready: { freq: [880, 1320], dur: 0.14 },
+                'needs-input': { freq: [440], dur: 0.08 },
+                blocked: { freq: [220, 180], dur: 0.25 },
+            };
+            let audioCtx = null;
+            function beep(mood) {
+                const s = SOUNDS[mood];
+                if (!s) return;
+                try {
+                    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    s.freq.forEach((f, i) => {
+                        const t = audioCtx.currentTime + i * 0.12;
+                        const osc = audioCtx.createOscillator();
+                        const gain = audioCtx.createGain();
+                        osc.type = 'sine';
+                        osc.frequency.value = f;
+                        gain.gain.setValueAtTime(0.0001, t);
+                        gain.gain.exponentialRampToValueAtTime(0.15, t + 0.02);
+                        gain.gain.exponentialRampToValueAtTime(0.0001, t + s.dur);
+                        osc.connect(gain).connect(audioCtx.destination);
+                        osc.start(t);
+                        osc.stop(t + s.dur + 0.05);
+                    });
+                } catch { /* 音频不可用则静默 */ }
+            }
+            bridge.onMood((mood) => {
+                window.Pet.setMood(mood);
+                beep(mood);
+            });
+            window.__petLogs = [];
+            if (bridge.onLog) bridge.onLog((data) => { window.__petLogs.push(data); });
+                        bridge.onConnection((info) => {
+                if (!info.connected) {
+                    window.Pet.setMood('blocked');
+                    // 端口每次启动都变，所以这里把「当前地址」讲出来，用户不用自己去查
+                    window.Pet.say(info.url
+                        ? '还没连上 harness：' + info.url
+                        : '还没连上 harness，请从 DSH 侧边栏启动桌宠', 5000);
+                }
+            });
+            // 被摸时说的话（本地台词，不耗 token）
+            const PET_LINES = [
+                '嘿嘿，舒服~',
+                '再摸摸嘛',
+                '我头很软的，对吧',
+                '被你摸到啦',
+                '呼噜呼噜……',
+                '这个力度刚刚好',
+            ];
+
+            // ---- 光标位置 -> 光线检测 -> 回报是否在模型上 ----
+            if (window.petWindow && window.petWindow.onCursor) {
+                let lastHit = null;
+                let lastScreenX = null;
+                let wigSign = 0, wigCount = 0, wigSince = 0, lastPetAt = 0;
+
+                // 光标坐标还用来判断「人已经走开了」：不在窗口里超过 1.2 秒就把面板收掉
+                setInterval(function () {
+                    const c = window.__petLastCursor;
+                    if (!c) return;
+                    const outside = c.x < 0 || c.x > window.innerWidth || c.y < 0 || c.y > window.innerHeight;
+                    if (outside && performance.now() - c.at > 1200) {
+                        if (window.__petHidePanel) window.__petHidePanel();
+                        window.__petLastCursor = null;
+                    }
+                }, 400);
+
+                window.petWindow.onCursor((p) => {
+                    window.__petLastCursor = { x: p.x, y: p.y, at: performance.now() };
+                    const sx = typeof p.sx === 'number' ? p.sx : null;
+
+                    // 睡着：在它身上横向蹭一下就叫醒
+                    if (window.__petIsSleeping) {
+                        if (sx !== null && lastScreenX !== null && Math.abs(sx - lastScreenX) > 30) {
+                            const woke = window.__petWake ? window.__petWake() : false;
+                            if (woke) {
+                                if (window.Pet && window.Pet.say) window.Pet.say('醒啦', 2000);
+                                if (window.__petHappy) window.__petHappy();
+                            }
+                        }
+                        if (sx !== null) lastScreenX = sx;
+                        return;
+                    }
+
+                    // 射线判定：光标在不在模型上（比 nearTarget 可靠，
+                    // 跟随时它一直在动，nearTarget 会跟着窗口位置漂）
+                    const hit = window.__petHitTest ? window.__petHitTest(p.x, p.y) : false;
+                    if (hit !== lastHit) {
+                        lastHit = hit;
+                        if (window.petWindow.reportHit) window.petWindow.reportHit(hit);
+                    }
+
+                    // 摸摸：在它身上左右来回甩。用屏幕坐标算方向和幅度，
+                    // 这样它自己游动不会干扰（窗口内相对坐标会被带动）。
+                    if (sx !== null && hit) {
+                        const d = lastScreenX === null ? 0 : sx - lastScreenX;
+                        if (Math.abs(d) > 18) {
+                            const now = performance.now();
+                            if (now - wigSince > 3000) { wigCount = 0; wigSince = now; }
+                            const sign = d > 0 ? 1 : -1;
+                            if (sign !== wigSign) {
+                                wigSign = sign;
+                                wigCount++;
+                                if (wigCount >= 3 && now - lastPetAt > 3000) {
+                                    lastPetAt = now;
+                                    wigCount = 0;
+                                    wigSince = now;
+                                    window.__petPetting = now + 1600;
+                                    if (window.__petHearts) window.__petHearts(true);
+                                    if (window.Pet && window.Pet.say) {
+                                        const petLine = window.__petGameMode && window.__petGameLine
+                                            ? window.__petGameLine('pet')
+                                            : PET_LINES[Math.floor(Math.random() * PET_LINES.length)];
+                                        window.Pet.say(petLine, 2600);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (sx !== null) lastScreenX = sx;
+                });
+            }
+
+            // ---- 主进程要求中断翻滚（挡住东西了，让开优先） ----
+            if (bridge.onAbortSpin) {
+                bridge.onAbortSpin(() => {
+                    idleSpinning = false;
+                    idleSpin = 0;
+                    lastCursorAt = performance.now();
+                    if (window.petWindow && window.petWindow.setSpinning) window.petWindow.setSpinning(false);
+                });
+            }
+
+            // ---- 主进程要求中断翻滚（挡住东西了，让开优先） ----
+            if (bridge.onAbortSpin) {
+                bridge.onAbortSpin(() => {
+                    idleSpinning = false;
+                    idleSpin = 0;
+                    lastCursorAt = performance.now();
+                    if (window.petWindow && window.petWindow.setSpinning) window.petWindow.setSpinning(false);
+                });
+            }
+
+            // ---- 跟随鼠标：主进程推来的速度方向 -> 侧倾；光标相对位置 -> 头朝向 ----
+            if (bridge.onSwim) {
+                bridge.onSwim((v) => {
+                    const s = window.__petSwim;
+                    if (!s || !v) return;
+                    const vx = Math.max(-1, Math.min(1, Number(v.vx) || 0));
+                    const vy = Math.max(-1, Math.min(1, Number(v.vy) || 0));
+                    // 头和身子都在朝光标偏了，横向侧倾就收一点，别两边打架
+                    s.targetBank = -vx * 0.18;
+                    s.targetPitch = vy * 0.06;
+                    // 有没有在游：靠速度方向的分量判断。停在原地时主进程发的是 0/0。
+                    s.targetSwim = (Math.abs(vx) + Math.abs(vy) > 0.06) ? 1 : 0;
+                    s.lastAt = performance.now();
+
+                    // 漫游（roam）消息不算"鼠标动了"：手确实没动，所以待机翻滚的
+                    // 计时继续走 —— 它游着游着翻个身，挺像活的。
+                    if (!v.roam) {
+                        lastCursorAt = performance.now();
+                        idleSpinning = false;
+                        idleSpin = 0;
+                    }
+                    const f = window.__petFace;
+                    if (!f || typeof v.cx !== 'number' || typeof v.cy !== 'number') return;
+                    const dx = v.cx, dy = v.cy;
+
+                    // 手离它多近：0 = 已经离开身体，1 = 压在它身上
+                    const nx = dx / (innerWidth * 0.357);
+                    const ny = dy / (innerHeight * 0.3125);
+                    const r = Math.hypot(nx, ny);
+                    // 只要离开身体一点点（r > 0.95，约 142px）就算 0 —— 也就是「完全
+                    // 面向箭头」；只有真压到它身上，才慢慢收成正对镜头。
+                    f.nearTarget = Math.max(0, Math.min(1, (0.95 - r) / 0.3));
+                    const far = 1 - f.nearTarget;
+
+                    const len = Math.hypot(dx, dy);
+                    const ux = len > 1 ? dx / len : 0;
+                    const uy = len > 1 ? dy / len : 0;
+
+                    // 头指向箭头：屏幕角度 α（右=0，上=π/2，下=-π/2，左=π）。
+                    //
+                    // 头在局部 -X。用镜像（flip=-1）时头的基准角变成 0，不用镜像时是 π。
+                    // 于是按 α 落在哪半边选镜像，平面旋转 φ 就永远落在 ±90° 内 ——
+                    // 这就是「超过 90° 自动镜像、不会倒着游」：α 跨过 ±90° 的那一瞬
+                    // 换一次镜像，φ 从 +90 翻到 -90（差 π），同时把当前倾角也补上 π，
+                    // 头指的方向是连续的，只有身体镜像了一下。
+                    // 方向先平滑再看角度：鼠标猛甩时 ux/uy 会一帧内翻个方向，直接拿去
+                    // 算角度会让镜像疯狂切换、整只抽搐。这里对「角度」做 120ms 低通，
+                    // 并按最短路走（跨 ±180° 不会绕远路）。
+                    const nowSwim = performance.now();
+                    const dtSwim = Math.min((nowSwim - (f.lastAt || nowSwim)) / 1000, 0.25);
+                    f.lastAt = nowSwim;
+                    let rawAng = Math.atan2(-uy, ux);
+                    // 光标几乎压在它中心（<40px）时，方向向量是噪声：上下蹭两下手就
+                    // 从"朝下"翻到"朝上"，角度能一口气转 180°。这时候干脆别更新方向，
+                    // 保持上一次的朝向 —— 不然它会跟着手的抖动原地打圈。
+                    const nearCenter = len < 40;
+                    if (!f.smoothInit) { f.angSmooth = rawAng; f.smoothInit = true; }
+                    else if (!nearCenter) {
+                        let dAng = rawAng - f.angSmooth;
+                        while (dAng > Math.PI) dAng -= Math.PI * 2;
+                        while (dAng < -Math.PI) dAng += Math.PI * 2;
+                        const k = 1 - Math.pow(0.0001, dtSwim / 0.16);
+                        f.angSmooth += dAng * k;
+                    }
+                    // 只把平滑角度归一化到 [-π, π]，绝不动 f.tilt：以前在这里顺手挪
+                    // 倾角，far 很小时（手压在它身上）两边挪的量不一样，差出 2π 级别，
+                    // 缓动就会带着它转一整圈。
+                    let ang = f.angSmooth;
+                    while (ang > Math.PI) ang -= Math.PI * 2;
+                    while (ang < -Math.PI) ang += Math.PI * 2;
+                    f.angSmooth = ang;
+
+                    // 启动后先固定朝左一小会儿，别一上来就被光标拽着转
+                    if (performance.now() < (f.lockUntil || 0)) {
+                        f.tiltTarget = 0;
+                        f.yawTarget = 0;
+                        f.pitchTarget = 0;
+                        return;
+                    }
+
+                    const half = Math.PI / 2;
+                    // ±11° 滞回 + 450ms 冷却：贴着中线晃动、或者手速太快时，不会连续翻面
+                    let wantFlip = f.flip;
+                    if (f.nearTarget < 0.5 && nowSwim - (f.lastFlipAt || 0) > 450) {
+                        if (f.flip === -1) wantFlip = Math.abs(ang) > half + 0.20 ? 1 : -1;
+                        else wantFlip = Math.abs(ang) < half - 0.20 ? -1 : 1;
+                    }
+                    const phi = wantFlip === -1 ? ang : (ang > 0 ? ang - Math.PI : ang + Math.PI);
+                    // 目标角折回「离当前倾角最近的那个等价角」（差 2π 的整数倍）。
+                    // 这样无论角度怎么归一化，缓动永远走最短路，不会为了追一个
+                    // 等价角而绕整圈。
+                    let tTarget = phi * far;
+                    tTarget -= Math.round((tTarget - f.tilt) / (Math.PI * 2)) * Math.PI * 2;
+                    if (wantFlip !== f.flip) {
+                        // 不再瞬间对齐：镜像本身有过渡动画（flipShown 从 1 平滑到 -1，
+                        // 由 animate 负责），倾角也交给缓动追过去，两者一起把"翻面"
+                        // 演成一个动作，而不是"啪"地一下。
+                        // 真正的 180° 转身：目标角 = -1 侧对应 π，+1 侧对应 0
+                        f.turnFrom = f.baseShown;
+                        f.turnTo = wantFlip === -1 ? Math.PI : 0;
+                        if (Math.abs(f.turnTo - f.turnFrom) > 0.01) f.turnT = 1e-4;
+                        else f.baseShown = f.turnTo;
+                        f.flip = wantFlip;
+                        f.lastFlipAt = nowSwim;
+                    }
+                    f.tiltTarget = tTarget;
+                    f.yawTarget = 0;
+                    f.pitchTarget = uy * 0.10 * far;
+
+                });
+            }
+            bridge.onReply((data) => {
+                if (data.error) {
+                    window.Pet.say('出错：' + data.error, 6000);
+                }
+            });
+            // ---- 余额查询结果播报 ----
+            if (bridge.onBalance) {
+                bridge.onBalance((data) => {
+                    if (!data) return;
+                    if (data.kind === 'loading') {
+                        window.Pet.say('💰 查余额中…', 0);
+                    } else if (data.kind === 'ok') {
+                        window.Pet.say(data.text, 8000);
+                        if (window.__petHappy) window.__petHappy();
+                        playSound(data.data && data.data.available ? 'heart' : 'sleep');
+                    } else {
+                        window.Pet.say(data.text || '余额查询失败', 6000);
+                        playSound('sleep');
+                    }
+                });
+            }
+            // ---- 单击互动：说话 + 弹出派活输入框 ----
+            let input = null;
+            let streamBuf = ''; // 派活后的流式回复缓冲（P3）
+            let streamTurn = null, streamStep = null; // 跨 step 边界重置缓冲用
+            function openInput() {
+                if (input) return;
+                input = document.createElement('input');
+                input.className = 'pet-input';
+                input.placeholder = '派个活给我：例如「帮我看看今天的日期」';
+                document.body.appendChild(input);
+                input.focus();
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && input.value.trim()) {
+                        const text = input.value.trim();
+                        input.value = '';
+                        closeInput();
+                        window.Pet.say('收到，我去看看~', 2000);
+                        streamBuf = '';
+                        streamTurn = null; streamStep = null;
+                        bridge.prompt(text);
+                    } else if (e.key === 'Escape') {
+                        closeInput();
+                    }
+                });
+                document.addEventListener('mousedown', outside);
+                function outside(e) {
+                    if (input && e.target !== input) closeInput();
+                }
+                function closeInput() {
+                    if (!input) return;
+                    document.removeEventListener('mousedown', outside);
+                    input.remove();
+                    input = null;
+                }
+                window.__petCloseInput = closeInput;
+                // 在框里打字 => 别让面板 8 秒后把框收走
+                input.addEventListener('input', function () {
+                    if (window.__petKeepPanel) window.__petKeepPanel();
+                });
+            }
+            window.Pet.on('click', () => {
+                openInput();
+                if (window.__petKeepPanel) window.__petKeepPanel();
+            });
+            // ---- 派活后的结果回显：订阅 assistant 流式文本（P3） ----
+            if (bridge.onStream) {
+                bridge.onStream((data) => {
+                    if (data.kind === 'chunk') {
+                        // 新的一步（turn/step 变化）时重置缓冲，避免跨 step 拼接
+                        if (data.turn !== streamTurn || data.step !== streamStep) {
+                            streamBuf = '';
+                            streamTurn = data.turn; streamStep = data.step;
+                        }
+                        streamBuf += data.text || '';
+                        window.Pet.say(streamBuf, 0);
+                    } else if (data.kind === 'message') {
+                        streamBuf = data.text || '';
+                        streamTurn = null; streamStep = null;
+                        if (streamBuf) window.Pet.say(streamBuf, 0);
+                    } else if (data.kind === 'done') {
+                        if (streamBuf) window.Pet.say(streamBuf, 8000);
+                        streamBuf = '';
+                        streamTurn = null; streamStep = null;
+                    }
+                });
+            }
+            // ---- 主进程让说话（比如「新版链接已复制」）----
+            if (window.petWindow && window.petWindow.onSay) {
+                window.petWindow.onSay(function (v) {
+                    if (!v || !v.text) return;
+                    // show 定义在另一个闭包里，这里必须走 window 上的引用
+                    if (typeof window.__petShow === 'function') window.__petShow(v.text, v.ms || 4000);
+                });
+            }
+
+            // ---- 游戏模式：换一套台词 ----
+            // 注意：这个是挂在 petWindow 上的（不是 petBridge），别接错了
+            if (window.petWindow && window.petWindow.onGameMode) {
+                window.petWindow.onGameMode((on) => { window.__petGameMode = !!on; });
+            }
+
+            // ---- 小游戏：吃到鱼 ----
+            // ⚠️ 这个挂在 petWindow 上（不是 petBridge）。两个对象名字很像，
+            // 接错了不会报错、只是回调永远不触发 —— 吃鱼没反应就是这么来的。
+            if (window.petWindow && window.petWindow.onFishEaten) {
+                window.petWindow.onFishEaten(function () {
+                    if (window.__petEatFish) window.__petEatFish();
+                });
+            }
+
+            // ---- 体型大小 ----
+            if (bridge.onSetSize) {
+                bridge.onSetSize((k) => { if (window.__petSetScale) window.__petSetScale(k); });
+            }
+
+            // ---- 换皮肤 / 自定义配色 / 跳舞强度 ----
+            if (bridge.onSetSkin) {
+                bridge.onSetSkin((name) => { if (window.__petSetSkin) window.__petSetSkin(name); });
+            }
+            if (bridge.onSetCustomSkin) {
+                bridge.onSetCustomSkin((v) => { if (v && window.__petSetCustomSkin) window.__petSetCustomSkin(v.dark, v.white); });
+            }
+            if (bridge.onSetDanceFreq) {
+                bridge.onSetDanceFreq((v) => { if (window.__petSetDanceFreq) window.__petSetDanceFreq(v); });
+            }
+            // ---- 播放器频谱 → 温和摆动 + 节拍检测（打拍子/转圈/音符） ----
+            if (bridge.onAudioFreq) {
+                let bassAvg = 0, lastBeat = 0;
+                bridge.onAudioFreq((data) => {
+                    const arr = Array.isArray(data) ? data : [];
+                    // 连续能量：中高频 → 温和摆动幅度
+                    let sum = 0, n = 0;
+                    for (let i = 8; i < Math.min(48, arr.length); i++) { sum += arr[i]; n++; }
+                    const lvl = n ? Math.min(1, (sum / n) / 140) : 0;
+                    if (window.__petSetDance) window.__petSetDance(lvl);
+                    // 节拍检测：低频能量突增（onset）
+                    let bass = 0;
+                    for (let i = 0; i < 8 && i < arr.length; i++) bass += arr[i];
+                    bass /= 8;
+                    bassAvg = bassAvg * 0.88 + bass * 0.12;
+                    const now = Date.now();
+                    if (bass > bassAvg * 1.5 + 10 && now - lastBeat > 500) {
+                        lastBeat = now;
+                        if (window.__petOnBeat) window.__petOnBeat();
+                    }
+                });
+            }
+            if (bridge.onMusicComment) {
+                bridge.onMusicComment((name) => { if (name) window.Pet.say('正在播放：' + name, 3000); });
+            }
+        })();
+    </script>
+</body>
+</html>
