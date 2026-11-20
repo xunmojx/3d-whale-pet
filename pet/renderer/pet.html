@@ -1333,13 +1333,47 @@
                 '别急，慢慢来，我陪着你',
                 '我数了一下，你已经认真很久了',
             ];
+            // 取了名字之后，一半的闲聊改成以它为主语，让名字真的出现
+            // 取名后额外加的一层台词。意象刻意和上面 14 句错开：
+            // 上面讲过「在这儿 / 辛苦 / 专心 / 转身 / 小鱼干 / 伸懒腰 / 偷看 / 打哈欠 /
+            // 帮你看屏幕 / 水底 / 摸摸 / 别急」，这里一个都不重复。
+            // 取名后额外加的一层台词。意象刻意和上面 14 句错开：
+            // 上面讲过「在这儿 / 辛苦 / 专心 / 转身 / 小鱼干 / 伸懒腰 / 偷看 / 打哈欠 /
+            // 帮你看屏幕 / 水底 / 摸摸 / 别急」，这里一个都不重复。
+            const NAME_LINES = [
+                '{name}想知道，你今天有没有好好喝水',
+                '{name}听见窗外有车过去',
+                '{name}不会忘记这个名字',
+                '{name}刚才想说什么，又忘了',
+                '{name}刚从一个很浅的梦里出来',
+                '{name}觉得，这个名字很好听',
+            ];
+            let petName = '';
+            window.__petSetName = function (n) {
+                petName = String(n || '').trim();
+            };
+            // 主进程会把名字推过来（改名后也会推一次）
+            try {
+                if (window.petWindow && window.petWindow.onSetName) {
+                    window.petWindow.onSetName(function (n) { window.__petSetName(n); });
+                }
+            } catch (e) { /* 桥没准备好就算了，等下次启动 */ }
+            /** 原来的 14 句一句没动，名字台词是额外加的一层，偶尔插进来 */
+            function pickIdleLine() {
+                if (petName && Math.random() < 0.3) {
+                    const t = NAME_LINES[Math.floor(Math.random() * NAME_LINES.length)];
+                    return t.replace(/\{name\}/g, petName);
+                }
+                return IDLE_LINES[Math.floor(Math.random() * IDLE_LINES.length)];
+            }
+            window.__petPickLine = pickIdleLine;   // 方便自检：看看现在会抽到什么台词
             let idleChatTimer = null;
             function scheduleIdleChat() {
                 clearTimeout(idleChatTimer);
                 idleChatTimer = setTimeout(function () {
                     // 正在说别的话（比如流式回复）就不插嘴
                     if (!bubble.classList.contains('show') && !window.__petIsSleeping && !window.__petGameMode) {
-                        show(IDLE_LINES[Math.floor(Math.random() * IDLE_LINES.length)], 5200);
+                        show(pickIdleLine(), 5200);
                     }
                     scheduleIdleChat();
                 }, 30000 + Math.random() * 40000);   // 30~70 秒一句
