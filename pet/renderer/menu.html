@@ -131,6 +131,7 @@
             ],
             current: (s) => s.dance,
         },
+        { id: 'rename', ico: '🏷️', label: '给我取名', tail: '' },
         { id: 'player', ico: '🎵', label: '播放器' },
         { id: 'balance', ico: '💰', label: '查询余额' },
         { id: 'help', ico: '📖', label: '帮助' },
@@ -150,6 +151,7 @@
         let lead = '';
         if (it.check) lead += '<span class="box"></span>';
         if (it.ico) lead += '<span class="ico">' + it.ico + '</span>';
+        if (it.id === 'rename' && state && state.name) it.tail = state.name
         const tail = it.sub
             ? '<span class="tail' + (isOpen ? ' rot' : '') + '">›</span>'
             : '';
