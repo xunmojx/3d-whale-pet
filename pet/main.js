@@ -2,7 +2,7 @@
 // 职责：
 //   1. 创建透明无框置顶窗口；处理"拖动身体移动窗口"
 //   2. 作为 harness gateway 的第二客户端：订阅事件流、派活、驱动情绪状态机
-const { app, BrowserWindow, ipcMain, Menu, screen, nativeImage, shell, clipboard } = require('electron')
+const { app, BrowserWindow, ipcMain, Menu, screen, nativeImage, shell, clipboard, dialog, desktopCapturer } = require('electron')
 const path = require('node:path')
 const { Gateway, fetchBalance, resolveGatewayUrl } = require('./gateway.js')
 
@@ -347,10 +347,17 @@ function createWindow() {
     hasShadow: false,
     skipTaskbar: false,
     alwaysOnTop: true,
+    // 先不显示：构造时给的 x/y 会被系统忽略，窗口会先出现在屏幕中间，
+    // 等页面加载完再挪到右下角——那一跳就是你看到的「闪现」。
+    // 改成加载完、位置钉好之后再 show，第一帧就在正确的位置。
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // 窗口被别的窗口盖住 / 失焦时，Chromium 会把动画帧率压到 10fps 甚至 1fps，
+      // 点头就变成两三帧闪一下，看着像抽搐。桌宠必须一直 60fps。
+      backgroundThrottling: false,
     },
   })
 
@@ -376,8 +383,6 @@ function createWindow() {
   win.webContents.on('did-finish-load', () => {
       pin()
       try { win.show() } catch { /* 忽略 */ }
-      setTimeout(() => pin(), 400)
-      setTimeout(() => pin(), 1500)
     })
   }
   // 桌宠必须始终压在最上层：被别的窗口盖住时，连右键菜单都点不到
@@ -1345,13 +1350,49 @@ function openPlayer() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // 播放的是本机音频文件（file://），关掉同源限制才能让 <audio> 直接读路径
+      webSecurity: false,
+      // 关键：窗口最小化后 Chromium 会把定时器压到 1 次/秒。
+      // 频谱是 50ms 发一次的，被压扁之后主窗口收到数据极少，
+      // 表现出来就是「播放器开着时每拍都点，一最小化就变成两拍一点」。
+      backgroundThrottling: false,
     },
   })
   playerWin.loadFile(path.join(__dirname, 'renderer', 'player.html'))
+  // 桌宠是 screen-saver 层级，播放器用普通层级会被它压在下面——
+  // 第一次点看着"没反应"，第二次因为走了上面的 focus() 才冒出来。
+  try { playerWin.setAlwaysOnTop(true, 'screen-saver') } catch { /* 忽略 */ }
+  playerWin.once('ready-to-show', () => {
+    try { playerWin.show(); playerWin.moveTop(); playerWin.focus() } catch { /* 忽略 */ }
+  })
   playerWin.on('closed', () => { playerWin = null })
 }
 
 ipcMain.on('pet:open-player', () => openPlayer())
+
+// 播放器选歌：走主进程的对话框，能拿到真实路径（renderer 里的 input[type=file] 拿不到）。
+// 记住的也是路径，重启后能直接恢复列表。
+// 抓系统声音（loopback）：主进程只负责把桌面源的 id 给渲染层，
+// 真正的媒体流由渲染层用 getUserMedia 拿。这样别的软件放歌时也能跟着跳。
+ipcMain.handle('pet:desktop-audio-source', async () => {
+  try {
+    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } })
+    if (!sources.length) return null
+    return sources[0].id
+  } catch { return null }
+})
+
+ipcMain.handle('pet:pick-audio', async () => {
+  if (!win || win.isDestroyed()) return []
+  try {
+    const r = await dialog.showOpenDialog(playerWin && !playerWin.isDestroyed() ? playerWin : win, {
+      title: '选择音频',
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: '音频', extensions: ['mp3', 'wav', 'flac', 'ogg', 'm4a', 'aac', 'wma'] }],
+    })
+    return r.canceled ? [] : (r.filePaths || [])
+  } catch { return [] }
+})
 ipcMain.on('pet:minimize-player', () => { if (playerWin && !playerWin.isDestroyed()) playerWin.hide() })
 ipcMain.on('pet:close-panel', (event) => {
   const w = BrowserWindow.fromWebContents(event.sender)
@@ -1361,6 +1402,9 @@ ipcMain.on('pet:close-panel', (event) => {
 // 播放器频谱/曲名 → 转发给主窗口（驱动虎鲸随节奏跳舞）
 ipcMain.on('pet:audio-freq', (_event, data) => {
   sendToWin('pet:audio-freq', data)
+})
+ipcMain.on('pet:beat', (_event, gapMs) => {
+  sendToWin('pet:beat', gapMs)
 })
 ipcMain.on('pet:music-comment', (_event, name) => {
   sendToWin('pet:music-comment', name)
@@ -1385,6 +1429,10 @@ function openColorPanel() {
     },
   })
   colorWin.loadFile(path.join(__dirname, 'renderer', 'color.html'))
+  try { colorWin.setAlwaysOnTop(true, 'screen-saver') } catch { /* 忽略 */ }
+  colorWin.once('ready-to-show', () => {
+    try { colorWin.show(); colorWin.moveTop(); colorWin.focus() } catch { /* 忽略 */ }
+  })
   colorWin.on('closed', () => { colorWin = null })
 }
 ipcMain.on('pet:set-custom-skin', (_event, data) => {
