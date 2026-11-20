@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>帮助</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-user-select:none;user-select:none;}
+body{background:#141a2c;color:#fff;font-family:system-ui,"PingFang SC","Microsoft YaHei",sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+#titlebar{display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.08);-webkit-app-region:drag;}
+#titlebar .label{flex:1;font-size:13px;}
+#titlebar button{width:22px;height:22px;border:none;border-radius:5px;background:transparent;color:rgba(255,255,255,.6);cursor:pointer;font-size:13px;-webkit-app-region:no-drag;}
+#titlebar button:hover{background:rgba(255,100,100,.6);color:#fff;}
+#content{flex:1;overflow-y:auto;padding:14px;font-size:12.5px;line-height:1.7;}
+#content h3{margin:14px 0 6px;font-size:14px;color:#8fb0ff;border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:4px;}
+#content h3:first-child{margin-top:0;}
+#content p{margin:3px 0;color:rgba(230,236,255,.9);}
+.kbd{display:inline-block;padding:0 6px;border-radius:4px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);font-size:11px;color:#fff;}
+</style>
+</head>
+<body>
+<div id="titlebar"><span class="label">📖 帮助</span><button id="close-btn">✕</button></div>
+<div id="content">
+  <h3>🖱️ 基本操作</h3>
+  <p><span class="kbd">左键拖动</span> 移动桌宠窗口</p>
+  <p><span class="kbd">左键单击</span> 弹出派活输入框 + 互动泡泡（<b>再单击一下小虎鲸即可收起</b>）</p>
+  <p><span class="kbd">右键单击</span> 打开菜单（跟随鼠标 / 待机自动漫游 / 换皮肤 / 跳舞强度 / 播放器 / 余额 / 帮助）</p>
+  <p>菜单会贴在虎鲸旁边弹出，<b>点旁边的空白处或按 Esc 就收起</b>；右边放不下时会自动翻到左边。</p>
+  <p><span class="kbd">右键拖动</span> 旋转视角</p>
+  <p>如果仓库里出了比你装的新的版本，菜单<b>最上面会多出一行蓝色提示</b>（⬆️ 新版本 x.y.z）。点它打开项目主页，那里有最新的安装链接。检查是启动后悄悄做的，网络不通就跳过，不会打扰你。</p>
+
+  <h3>🐭 跟随鼠标</h3>
+  <p><span class="kbd">右键菜单 → 🐭 跟随鼠标</span> 打开或关闭。<b>首次安装默认是关的</b>，打开之后会记住，下次还是开的。</p>
+  <p>打开时：它会朝你的鼠标游过来，停在手边约一掌的距离，脑袋一直朝着箭头——光标跑到它正上方，它会把头仰起来指过去。</p>
+  <p>关掉后：不再追你，原地待着（是否自己游，看下面那个开关）。</p>
+
+  <h3>🧭 待机自动漫游</h3>
+  <p><span class="kbd">右键菜单 → 🧭 待机自动漫游</span> 打开或关闭。</p>
+  <p>打开时：鼠标静止 10 秒，它就开始在屏幕上自己逛——随机挑个点游过去，到了歇两三秒，再换下一个。游动时脑袋朝着游的方向。</p>
+  <p>关掉后：没人理它就停在原地，只转头看你。</p>
+  <p>两个开关互不干扰：跟随关掉后它不会来追你，但只要漫游还开着，它照样会自己溜达。</p>
+  <p>这两个开关的状态也会<b>记住</b>，重开桌宠不会回到默认。</p>
+
+  <h3>😴 待机小动作</h3>
+  <p>很久没人理（约 2.5 分钟），它会随机做一件事，两件事不会同时出现：</p>
+  <p>🌀 <b>翻个跟头</b>：头向上仰，绕横轴翻一整圈，中途会露出肚皮朝上的样子。</p>
+  <p>💤 <b>睡一觉</b>：闭眼待 30~60 秒，头顶飘出流动渐变的 zzz。睡着时不动也不说话。<b>点它一下、或者蹭蹭它</b>都能提前叫醒，醒来会说一句「醒啦」。</p>
+
+  <h3>🐟 互动</h3>
+  <p>点击鲸鱼后，窗口左侧会出现三个互动泡泡：</p>
+  <p>🐟 喂食 → 小鱼游入鲸鱼嘴里</p>
+  <p>💗 爱心 → 冒出爱心，鲸鱼欢快扑腾</p>
+  <p>💤 睡眠 → 鲸鱼闭眼入睡（再点一次或点击鲸鱼唤醒）</p>
+  <p>三个泡泡和派活输入框的收起方式：<b>再单击一下小虎鲸</b>；或者把鼠标移开到窗口外面，1 秒多会自动收；不动它们 8 秒也会自动收。</p>
+
+  <h3>💗 摸摸它</h3>
+  <p>把鼠标放到它脑袋上，快速左右来回蹭三次以上——它会眯起眼睛（压成一条上扬的弧）、轻轻抖一下身子、冒出粉色爱心，然后说一句话。</p>
+
+  <h3>💬 闲聊</h3>
+  <p>没人说话时，它每隔 30~70 秒会自己冒一句：夸你、提醒你歇会儿、说自己打了个哈欠之类。</p>
+  <p>正在说别的内容（比如流式回复、报错）时不会插嘴；睡着时也不说话。</p>
+
+  <h3>📏 体型大小</h3>
+  <p>右键菜单 → 体型大小：小 / 中 / 大 / 特大四档。窗口和模型会一起缩放，不会出现「模型变大被窗口切掉」，换了档位它会重新算漫游点位。</p>
+  <p>选过的档位会<b>记住</b>，下次启动还是这个大小。</p>
+
+  <h3>🎨 换皮肤</h3>
+  <p>右键菜单 → 换皮肤：深寻蓝 / 虎鲸黑 / 草莓粉 / 薄荷绿 / 土豪金，或选「自定义配色」用取色器自由搭配身体与肚皮颜色。</p>
+
+  <h3>🎚 跳舞强度</h3>
+  <p>右键菜单 → 跳舞强度：关闭 / 低 / 中 / 高，控制播放音乐时鲸鱼随节奏跳舞的活跃度。</p>
+
+  <h3>🎵 播放器</h3>
+  <p>右键菜单 → 播放器：导入本地音频，虎鲸会随节拍打点、偶尔转圈、头顶冒音符。</p>
+
+  <h3>💰 查询余额</h3>
+  <p>右键菜单 → 查询余额：虎鲸会读取 <code>~/.dsh/.credentials.yaml</code> 里的 DeepSeek API Key，向官方接口查询账户余额并播报。</p>
+  <p>余额低于 ¥1 时会额外提醒充值；查询结果会显示总余额与赠金。</p>
+
+  <h3>🪟 点击穿透</h3>
+  <p>窗口默认是「穿透」的：除了鲸鱼身上那一小块，周围的透明区域都不吃鼠标，你可以直接点它下面的东西。</p>
+  <p>只有两种情况会暂时接住鼠标：光标落在鲸鱼身上（按模型的真实轮廓判定，尾鳍、胸鳍这些细条都算，不是外接的方框或椭圆）；或者左侧三个互动泡泡打开时——这时只放开左侧那一条竖带（约 92px 宽，够按按钮就行）。其余透明区域一律穿透，面板 8 秒后自动收回。</p>
+
+  <h3>🎮 大鱼吃小鱼</h3>
+  <p>右键菜单 → <b>🎮 大鱼吃小鱼</b>：勾上就开始。</p>
+  <p>开始后屏幕上会铺一层看不见的透明层，<b>左键点屏幕任意位置</b>就投一条小鱼下去。</p>
+  <p>小鱼会自己游，而且<b>远远看见小虎鲸就开始逃</b>（警戒范围挺大，越近逃得越急，但再快也逃不掉）；小虎鲸看到鱼会<b>加速追</b>（比平时跟手快得多），<b>追的时候头一直朝着鱼的方向</b>，和它盯着你的鼠标时一样。</p>
+  <p>撞上就把鱼吃掉——反应和喂食一样：小鱼游进嘴里、它欢快扑腾一下，然后说一句话。</p>
+  <p>游戏期间它换了一套台词：吃到鱼会说「好吃！」「再来一条」「嗯……鲜」这类；点它会说「别闹，我在捕猎」；蹭它会说「等我吃完嘛」。平时那 14 句闲聊在游戏里不会被调用。</p>
+  <p><b>右键点任意位置退出游戏</b>。</p>
+  <p>注意：游戏期间那层全屏透明层会接管鼠标点击，桌面上的东西暂时点不到（退出就恢复）。小虎鲸自己也完全让开鼠标，点它身上也是投鱼。</p>
+
+  <h3>💬 派活</h3>
+  <p><b>⚠️ 派活是真的调用模型，会花钱。</b>你在输入框里打的字，会作为一条真实消息发进 <b>DSH 当前打开的那个会话</b>——消耗 token，并且计入那段对话的上下文；模型的回复再流式回到气泡里显示。</p>
+  <p>也就是说，它更像「用鲸鱼当输入框发消息」，而不是和一只宠物闲聊。想聊天建议还是回 DSH 里打（气泡最宽 252px，长回复读起来很累）。</p>
+  <p>而它自己主动说的话——30~70 秒的闲聊、被摸时的「再摸摸嘛」、点击时的「摸鱼中，别打扰我」——都是本地写死的台词，<b>一句都不消耗 token</b>。</p>
+  <p>单击鲸鱼 → 输入一句话，虎鲸会把它派给 dsh harness 并流式回显结果。</p>
+  <p>消息会发送到 <b>harness 当前打开的窗口</b>（即最近在聊的那个会话），切窗口时自动跟随。需先启动 dsh；DSH 桌面版<b>每次启动的端口都是随机的</b>，所以地址由插件自动传递 / 发现：从侧边栏启动时由插件直接传 <code>WHALE_PET_URL</code>，手动 <code>npm start</code> 时读发现文件 <code>%DSH_HOME%/cache/whale-pet-dsh-url.json</code>。想显式覆盖就设 <code>WHALE_PET_URL</code>。</p>
+  <p>新版 dsh 需要鉴权，桌宠会自动读取 <code>~/.dsh/.credentials.yaml</code> 的密钥签发会话 Cookie，无需手动配置。</p>
+  <h3>🗑️ 删除本地数据</h3>
+  <p>卸载插件<b>不会</b>删掉你在这里的东西——体型、皮肤、跳舞强度、跟随和漫游开关都存在
+    <code>%APPDATA%\whale-pet-app\whale-pet-config.json</code>，重装之后还是上次的样子。</p>
+  <p>如果你打算彻底不要它了，点下面的按钮。这会删掉<b>配置和 180MB 的桌宠本体</b>，
+    之后插件仍然装着但启动不了，重装也得重新下载、不再记得原来的设置。</p>
+  <p><button id="wipe-btn" style="margin-top:4px;padding:8px 14px;border-radius:8px;border:1px solid rgba(220,80,80,.55);background:rgba(220,80,80,.12);color:#c0392b;font:inherit;font-size:13px;cursor:pointer">删除本地数据</button>
+     <span id="wipe-msg" style="margin-left:10px;font-size:13px;color:#888"></span></p>
+</div>
+<script>
+(function(){
+  // 两个桥对象各管一半：closePanel 在 petBridge，clearLocalData 在 petWindow
+  var api = Object.assign({}, window.petBridge || {}, window.petWindow || {});
+  document.getElementById('close-btn').onclick = function(){ if (api.closePanel) api.closePanel(); };
+  var btn = document.getElementById('wipe-btn');
+  var msg = document.getElementById('wipe-msg');
+  if (btn) btn.onclick = function () {
+    if (btn.dataset.armed !== '1') {
+      btn.dataset.armed = '1';
+      btn.textContent = '真的删？再点一次';
+      msg.textContent = '配置和 180MB 本体都会被删掉';
+      setTimeout(function () {
+        if (btn.dataset.armed === '1') {
+          btn.dataset.armed = '';
+          btn.textContent = '删除本地数据';
+          msg.textContent = '';
+        }
+      }, 6000);
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = '正在删除…';
+    if (api.clearLocalData) api.clearLocalData();
+  };
+  if (api.onClearDataResult) api.onClearDataResult(function (r) {
+    if (!btn) return;
+    btn.textContent = '已删除';
+    msg.textContent = (r && r.ok) ? '本地数据已清空，重装后会是全新的' : ('删除失败：' + (r && r.error || '未知错误'));
+  });
+})();
+</script>
+</body>
+</html>
