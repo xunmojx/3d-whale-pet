@@ -12,6 +12,9 @@ body{background:#141a2c;color:#fff;font-family:system-ui,"PingFang SC","Microsof
 #titlebar button:hover{background:rgba(77,107,254,.3);color:#fff;}
 #import-btn{margin:10px;padding:8px;border:2px dashed rgba(120,140,255,.3);border-radius:8px;text-align:center;cursor:pointer;font-size:12px;color:rgba(200,210,240,.6);background:transparent;}
 #import-btn:hover{background:rgba(77,107,254,.15);}
+#sys-btn{margin:0 10px 10px;padding:6px;border:1px solid rgba(120,140,255,.25);border-radius:8px;text-align:center;cursor:pointer;font-size:11px;color:rgba(200,210,240,.65);background:transparent;width:calc(100% - 20px);}
+#sys-btn:hover{background:rgba(77,107,254,.15);}
+#sys-btn.on{background:rgba(77,107,254,.28);color:#fff;border-color:rgba(120,140,255,.6);}
 #playlist{flex:1;overflow-y:auto;margin:0 10px;display:flex;flex-direction:column;gap:3px;}
 #playlist-empty{text-align:center;padding:15px 0;font-size:11px;color:rgba(200,210,240,.6);}
 .pl-item{display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:6px;cursor:pointer;font-size:11px;color:rgba(200,210,240,.6);}
@@ -43,8 +46,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
   <button id="close-btn" title="关闭">✕</button>
 </div>
 <button id="import-btn">📁 导入音频</button>
+<button id="sys-btn" title="抓取电脑正在播放的声音（别的软件放歌也能跟着跳）">🎧 监听电脑声音</button>
 <div id="playlist"></div>
 <div id="playlist-empty">还没有音频，点击上方导入</div>
+<div id="bpm-readout" style="padding:4px 12px;font-size:11px;color:rgba(160,180,230,.75);font-variant-numeric:tabular-nums">BPM --（只读，用于观察）</div>
 <div class="progress">
   <span id="time-cur">00:00</span>
   <input type="range" id="seek" min="0" max="1000" value="0">
@@ -68,7 +73,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
 </div>
 <script>
 (function () {
-  var api = window.petBridge || {};
+  // 两个桥各管一半，只取一个可能拿不到要用的方法
+  var api = Object.assign({}, window.petWindow || {}, window.petBridge || {});
   var audio = document.createElement('audio');
   audio.preload = 'auto';
   document.body.appendChild(audio);
@@ -121,20 +127,38 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
     else if (index === i) { stop(); index = -1; }
     renderList();
   }
+  // 选歌走主进程的文件对话框：能拿到真实路径，重启后直接按路径恢复列表
+  function saveQueue() {
+    try { localStorage.setItem('pet_audio_queue', JSON.stringify(queue)); } catch (e) {}
+  }
   function importAudio() {
-    var inp = document.createElement('input');
-    inp.type = 'file'; inp.accept = 'audio/*'; inp.multiple = true;
-    inp.onchange = function () {
-      var fs = Array.from(inp.files || []);
-      if (!fs.length) return;
-      fs.forEach(function (f) { queue.push({ name: f.name, url: URL.createObjectURL(f) }); });
+    if (!api.pickAudio) return;
+    api.pickAudio().then(function (paths) {
+      if (!paths || !paths.length) return;
+      paths.forEach(function (full) {
+        var name = String(full).split(/[\\/]/).pop();
+        queue.push({ name: name, url: 'file:///' + String(full).replace(/\\/g, '/') });
+      });
+      saveQueue();
       renderList();
       if (index === -1) play(0);
-      if (api.musicComment) api.musicComment(fs[fs.length - 1].name.replace(/\.(mp3|wav|flac|ogg|m4a|aac|wma)$/i, ''));
-    };
-    inp.click();
+      var last = String(paths[paths.length - 1]).split(/[\\/]/).pop();
+      if (api.musicComment) api.musicComment(last.replace(/\.(mp3|wav|flac|ogg|m4a|aac|wma)$/i, ''));
+    }).catch(function () {});
   }
+  // 启动时恢复上次的列表
+  (function restoreQueue() {
+    try {
+      var raw = localStorage.getItem('pet_audio_queue');
+      if (!raw) return;
+      var saved = JSON.parse(raw);
+      if (!Array.isArray(saved)) return;
+      queue = saved.filter(function (it) { return it && it.url; });
+      renderList();
+    } catch (e) {}
+  })();
   function play(i) {
+    saveQueue();
     if (i < 0 || i >= queue.length) return;
     index = i;
     audio.src = queue[i].url;
@@ -175,33 +199,180 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
   }
 
   var actx = null, analyser = null, freqData = null;
+  var audioSrc = null;   // <audio> 的 MediaElementSource（只建一次）
+  var sysAnalyser = null, sysData = null;   // 系统音频专用的分析器
+  // 注意：系统音频的分析器绝对不能 connect(actx.destination)。
+  // 一旦接上，系统声音会被再次播放出来、又被 loopback 录进去，形成无限回授——
+  // 那声音就是用户听到的「诡异电音」，而且暂停歌也停不下来。
   function ensureAnalyser() {
-    if (analyser) return true;
     try {
-      actx = new (window.AudioContext || window.webkitAudioContext)();
-      var src = actx.createMediaElementSource(audio);
-      analyser = actx.createAnalyser();
-      analyser.fftSize = 128;
-      analyser.smoothingTimeConstant = 0.6;
-      src.connect(analyser);
-      analyser.connect(actx.destination);
-      freqData = new Uint8Array(analyser.frequencyBinCount);
-      actx.addEventListener('statechange', function () {
-        if (actx && actx.state === 'suspended' && !audio.paused) actx.resume().catch(function () {});
-      });
+      if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+      if (!analyser) {
+        analyser = actx.createAnalyser();
+        analyser.fftSize = 128;
+        analyser.smoothingTimeConstant = 0.6;
+        freqData = new Uint8Array(analyser.frequencyBinCount);
+      }
+      // 关键：<audio> 必须自己也接到 analyser 上。
+      // 之前 analyser 存在就直接 return，导致「先开过监听、再放本地」时
+      // audio 从来没接进 analyser，于是一点数据都没有、虎鲸完全不动。
+      if (!audioSrc) {
+        audioSrc = actx.createMediaElementSource(audio);
+        audioSrc.connect(analyser);
+        analyser.connect(actx.destination);
+      }
+      if (actx.state === 'suspended' && !audio.paused) actx.resume().catch(function () {});
       return true;
-    } catch (e) { analyser = null; return false; }
+    } catch (e) { return false; }
   }
   audio.addEventListener('play', function () { if (ensureAnalyser() && actx && actx.state === 'suspended') actx.resume().catch(function () {}); });
+  // 频谱每 100ms 送一次给主窗口（算跳舞幅度）；
+  // 节拍也在这里判——播放器手里有实时 analyser，判完只发一个「拍」过去，比搬整条频谱稳。
+  var prevLvl = 0, lastBeatAt = 0, lastDetectAt = 0, smoothGap = 0, sysStream = null, sysSrc = null;
+  // 判定「这段声音像不像音乐」：说话、视频里的对白没有稳定节拍，低频也薄。
+  // 用最近几拍的间隔离散度（cv）和低频占比两个条件一起卡。
+  var beatGaps = [], lastBassRatio = 0;
+  function pushBeatGap(g) {
+    beatGaps.push(g);
+    if (beatGaps.length > 8) beatGaps.shift();
+  }
+  var sysStartedAt = 0;   // 开始监听系统声音的时刻
+  window.__musicGate = function () { return { gaps: beatGaps.map(function (g) { return Math.round(g); }), bass: Math.round(lastBassRatio * 100) / 100, ok: looksLikeMusic(), sys: !!sysStream }; };
+  function looksLikeMusic() {
+    // 本地播放器里放的就是用户自己选的歌，不用判，直接放行。
+    // 只有「监听系统声音」这条路上才需要区分音乐/说话。
+    if (!sysStream) return true;
+    // 监听系统声音时，如果 4 秒还没攒够拍，就直接看低频够不够——
+    // 有些歌鼓很闷，攒拍太慢，用户会以为「一直在监听但不跳」。
+    if (sysStream && sysStartedAt && Date.now() - sysStartedAt > 2500) {
+      // 系统音频这条路上，各家的音源差异很大（有的歌低频很薄），
+      // 门槛压到「有点低频 或 整体够响」就认，宁可偶尔跟着视频动，也别一直干站着。
+      return lastBassRatio > 0.06 || prevLvl > 0.10;
+    }
+    if (beatGaps.length < 2) return false;
+    var n = beatGaps.length, mean = 0;
+    for (var i = 0; i < n; i++) mean += beatGaps[i];
+    mean /= n;
+    var v = 0;
+    for (var i = 0; i < n; i++) { var d = beatGaps[i] - mean; v += d * d; }
+    var cv = Math.sqrt(v / n) / mean;             // 变异系数：越小越规律
+    return cv < 0.42 && lastBassRatio > 0.08 && mean > 260;
+  }
   setInterval(function () {
-    if (audio.paused || !api.sendAudioFreq) return;
-    var out;
-    if (analyser && freqData) { analyser.getByteFrequencyData(freqData); out = Array.from(freqData); }
-    else { out = Array.from({ length: 64 }, function () { return Math.floor(Math.random() * 220); }); }
-    try { api.sendAudioFreq(out); } catch (e) {}
-  }, 100);
+    if (audio.paused && !sysStream) return;   // 自己没放但正在监听系统声音时照样发
+    var out = null;
+    var curAn = sysStream ? sysAnalyser : analyser;
+    var curData = sysStream ? sysData : freqData;
+    if (curAn && curData) { curAn.getByteFrequencyData(curData); out = Array.from(curData); }
+    else { out = Array.from({ length: 64 }, function () { return 0; }); }
+    var sum = 0;
+    for (var i = 0; i < out.length; i++) sum += out[i];
+    var lvl = Math.min(1, (sum / out.length) / 110);
+    // 低频（前 8 个 bin）占总能量的比例：鼓和贝斯厚，说话薄
+    var bassE = 0;
+    for (var i = 0; i < 8 && i < out.length; i++) bassE += out[i];
+    lastBassRatio = sum > 0 ? bassE / sum : 0;
+    var dE = lvl - prevLvl;
+    prevLvl = prevLvl + (lvl - prevLvl) * 0.55;
+    var now = Date.now();
+    // 冷却至少 300ms（上限 3.3 拍/秒）。之前用 smoothGap*0.55，一旦估到 300ms
+    // 就变成 165ms，于是每帧都判成拍，越滚越快。
+    var need = Math.min(1100, Math.max(260, smoothGap * 0.95));   // 约等于一拍：一拍一次，不快也不漏
+    var isBeat = 0;
+    var beatAt = 0;
+
+    // 一、能量跳变命中时，只做「校准」：把估计出来的拍间隔调准，不当成发拍依据。
+    //    系统音频经过混音，跳变常常不干净，靠它直接发拍会只偶尔点一下。
+    if (lvl > 0.02 && dE > 0.035 + prevLvl * 0.08) {
+      var gap = lastDetectAt ? now - lastDetectAt : 0;
+      lastDetectAt = now;
+      if (gap > 250 && gap < 1100) {   // 只认 55~240 BPM 的拍间隔
+        pushBeatGap(gap);
+        // 用中位数而不是滑动平均：偶尔被背景音带偏的一两拍会被直接忽略，
+        // 歌里变速时也能较快跟上（中位数跟着样本池滚动）。
+        var sorted = beatGaps.slice().sort(function (a, b) { return a - b; });
+        var mid = sorted.length >> 1;
+        smoothGap = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+        // 半频校正已经去掉：它会把舒缓的歌误判成「漏了一半拍」，
+        // 结果慢歌被砍成一半间隔、点头反而变快——就是你看到的那种颠倒。
+        // 现在只靠中位数，宁可偶尔慢一拍，也不要整体错位。
+      }
+    }
+
+    // 二、真正的发拍靠一个节拍时钟：只要在放声音，就按当前估计的拍间隔稳定地跳。
+    //    这样有声音就一定有节奏，不会出现「只听得到偶尔几下」。
+    if ((!audio.paused || sysStream) && prevLvl > 0.015 && now - lastBeatAt >= need) {
+      lastBeatAt = now;            // 时钟无条件往前推，不然判定一失败就会卡住、然后每帧都发
+      if (looksLikeMusic()) {
+        isBeat = 1;
+        beatAt = now;
+      }
+    }
+    // 第 65 位当标记：1 = 这一帧是一拍。主窗口从同一个通道里读出来，
+    // 不用再开一条 IPC（新开的那条在这台机器上死活收不到）。
+    out.push(isBeat);
+    out.push(Math.round(smoothGap || 500));   // 拍间隔
+    out.push(isBeat ? beatAt : 0);            // 重音真正发生的时刻（毫秒时间戳）
+    if (api.sendAudioFreq) { try { api.sendAudioFreq(out); } catch (e) {} }
+  }, 50);
+
+  // 只读的 BPM 显示：不参与任何逻辑，纯粹用来看估计得准不准
+  var bpmEl = document.getElementById('bpm-readout');
+  setInterval(function () {
+    if (!bpmEl) return;
+    var g = smoothGap || 0;
+    if (!g || (audio.paused && !sysStream)) { bpmEl.textContent = 'BPM --（没有在放）'; return; }
+    var bpm = Math.round(60000 / g);
+    var src = sysStream ? '系统声音' : '本地';
+    bpmEl.textContent = 'BPM ' + bpm + ' · 拍间隔 ' + Math.round(g) + 'ms · ' + src;
+  }, 500);
 
   el('import-btn').onclick = importAudio;
+
+  // —— 监听电脑声音：抓桌面 loopback，接进同一个 analyser ——
+  // 这样别的软件放歌时，虎鲸也能跟着节拍点头。
+  el('sys-btn').onclick = function () {
+    if (sysStream) {
+      try { sysStream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+      sysStream = null;
+      if (sysSrc) { try { sysSrc.disconnect(); } catch (e) {} sysSrc = null; }
+      if (sysAnalyser) { try { sysAnalyser.disconnect(); } catch (e) {} }
+      sysStartedAt = 0; beatGaps = [];
+      el('sys-btn').classList.remove('on');
+      el('sys-btn').textContent = '🎧 监听电脑声音';
+      return;
+    }
+    if (!api.desktopAudioSource) return;
+    api.desktopAudioSource().then(function (sourceId) {
+      if (!sourceId) { el('sys-btn').textContent = '🎧 拿不到桌面音频源'; return; }
+      var constraints = {
+        audio: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId } },
+        video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId } },
+      };
+      return navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
+        // 只要声音，画面丢掉
+        stream.getVideoTracks().forEach(function (t) { t.stop(); stream.removeTrack(t); });
+        sysStream = stream;
+        if (!actx) {
+          try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
+        }
+        if (actx.state === 'suspended') actx.resume().catch(function () {});
+        if (!sysAnalyser) {
+          sysAnalyser = actx.createAnalyser();
+          sysAnalyser.fftSize = 128;
+          sysAnalyser.smoothingTimeConstant = 0.6;
+          sysData = new Uint8Array(sysAnalyser.frequencyBinCount);
+        }
+        sysSrc = actx.createMediaStreamSource(stream);
+        sysSrc.connect(sysAnalyser);   // 只进分析器，不接扬声器
+        sysStartedAt = Date.now();
+        el('sys-btn').classList.add('on');
+        el('sys-btn').textContent = '🎧 正在监听电脑声音（点一下停止）';
+      });
+    }).catch(function () {
+      el('sys-btn').textContent = '🎧 系统不支持抓声音';
+    });
+  };
   el('play').onclick = togglePlay;
   el('stop').onclick = stop;
   el('prev').onclick = function () { var i = prevIndex(); if (i >= 0) play(i); };
