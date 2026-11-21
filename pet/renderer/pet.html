@@ -1478,7 +1478,9 @@
             })();
 
             window.__petSetSleeping = function (on) { isSleeping = !!on; };
-            window.__petHappy = function () { beatPulse = 1; }; // 投喂/爱心触发一次欢快扑腾
+            window.__petHappy = function () { beatPulse = 1; };
+            // 被点一下：轻轻抖一下尾巴，和有没有台词无关，保证总有反馈
+            window.__petClickReact = function () { beatPulse = Math.max(beatPulse, 0.8); }; // 投喂/爱心触发一次欢快扑腾
         })();
     </script>
     <script>
@@ -1590,14 +1592,12 @@
                 window.__petLines = null;
                 window.__petLinePool = function (cat, fallback) {
                     const sets = window.__petLines;
+                    // 没收到主进程的数据（老版本/还没推过来）才用代码里的内置台词
+                    if (!sets || !sets[cat]) return (fallback || []).slice();
+                    // 收到了就以它为准：空 = 这一类全关了，就该闭嘴
                     const out = [];
-                    if (sets && sets[cat]) {
-                        const b = sets[cat].builtin || [];
-                        const c = sets[cat].custom || [];
-                        for (const x of b) out.push(x);
-                        for (const x of c) out.push(x);
-                    }
-                    if (!out.length) for (const x of (fallback || [])) out.push(x);
+                    for (const x of (sets[cat].builtin || [])) out.push(x);
+                    for (const x of (sets[cat].custom || [])) out.push(x);
                     return out;
                 };
                 window.__petPickLineFrom = function (cat, fallback) {
@@ -1674,7 +1674,8 @@
                     // DSH 正在深度求索时也不说——那会儿头上正冒着省略号，插嘴很出戏
                     const thinking = window.__petThinking ? window.__petThinking() : false;
                     if (!thinking && !bubble.classList.contains('show') && !window.__petIsSleeping && !window.__petGameMode) {
-                        show(pickIdleLine(), 5200);
+                        const idleLine = pickIdleLine();
+                        if (idleLine) show(idleLine, 5200);
                     }
                     scheduleIdleChat();
                 }, 30000 + Math.random() * 40000);   // 30~70 秒一句
@@ -1726,7 +1727,8 @@
                             const clickLine = window.__petGameMode && window.__petGameLine
                                 ? window.__petGameLine('click')
                                 : window.__petPickLineFrom('click', LINES);
-                            show(clickLine, 3000);
+                            if (window.__petClickReact) window.__petClickReact();
+                            if (clickLine) show(clickLine, 3000);
                             window.Pet.emit('click');
                             showActionBubbles();
                         }
@@ -1981,7 +1983,7 @@
                         'setSpinning', 'setSleeping', 'onCursor', 'reportHit',
                     ],
                     petBridge: [
-                        'onMood', 'onThinking', 'onLines', 'onConnection', 'onAbortSpin', 'onSwim',
+                        'onMood', 'onThinking', 'onLines', 'askLines', 'onConnection', 'onAbortSpin', 'onSwim',
                         'onLog', 'onReply', 'onBalance', 'queryBalance',
                         'onStream', 'prompt',
                         'onSetSkin', 'onSetCustomSkin', 'onSetSize', 'onSetDanceFreq',
@@ -2033,6 +2035,7 @@
             }
             // 台词：主进程把「保留的内置 + 自定义」推过来
             if (bridge.onLines) bridge.onLines(function (d) { window.__petLines = d || null; });
+            if (bridge.askLines) bridge.askLines();   // 主动要一次，防止错过启动时那一次推送
             bridge.onMood((mood) => {
                 window.Pet.setMood(mood);
                 beep(mood);
@@ -2218,7 +2221,7 @@
                                             const petLine = window.__petGameMode && window.__petGameLine
                                                 ? window.__petGameLine('pet')
                                                 : window.__petPickLineFrom('pet', PET_LINES);
-                                            window.Pet.say(petLine, 2600);
+                                            if (petLine) window.Pet.say(petLine, 2600);
                                         }
                                     }
                                 }
