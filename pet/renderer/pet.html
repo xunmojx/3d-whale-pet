@@ -2126,15 +2126,23 @@
                     if (panel.contains(e.target)) return;
                     if (window.__petHidePanel) window.__petHidePanel();
                 }, true);
+                // 注意不能用「坐标多久没更新」来判断离开：主进程现在有心跳，
+                // 光标不动时也会每 150ms 发一次，那个时间戳永远是新的。
+                // 所以要自己记「从什么时候开始一直在窗口外」。
+                let outsideSince = 0;
                 setInterval(function () {
+                    const panel = document.getElementById('action-bubbles');
+                    if (!panel || !panel.classList.contains('open')) { outsideSince = 0; return; }
                     const c = window.__petLastCursor;
-                    if (!c) return;
+                    if (!c) { outsideSince = 0; return; }
                     const outside = c.x < 0 || c.x > window.innerWidth || c.y < 0 || c.y > window.innerHeight;
-                    if (outside && performance.now() - c.at > 700) {
+                    if (!outside) { outsideSince = 0; return; }
+                    if (!outsideSince) outsideSince = performance.now();
+                    if (performance.now() - outsideSince > 700) {
+                        outsideSince = 0;
                         if (window.__petHidePanel) window.__petHidePanel();
-                        window.__petLastCursor = null;
                     }
-                }, 400);
+                }, 150);
 
                 window.petWindow.onCursor((p) => {
                     window.__petLastCursor = { x: p.x, y: p.y, at: performance.now() };
