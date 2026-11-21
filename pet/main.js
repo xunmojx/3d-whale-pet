@@ -149,6 +149,19 @@ function updateGame(now, dt, cx, cy) {
       f.vx += (dx / d) * push * dtSec
       f.vy += (dy / d) * push * dtSec
     }
+    // 平时（没被惊动）也要自己游：维持一个缓慢的巡游速度，方向隔一两秒换一次。
+    // 否则阻尼会把速度吃掉，鱼就停在那儿等着被吃。
+    if (d >= GAME.alertDist) {
+      if (!f.cruiseAt || now - f.cruiseAt > 1500 + Math.random() * 2000) {
+        f.cruiseAt = now
+        const a = Math.random() * Math.PI * 2
+        const cruise = 38 + Math.random() * 30
+        f.cruiseVx = Math.cos(a) * cruise
+        f.cruiseVy = Math.sin(a) * cruise
+      }
+      f.vx += ((f.cruiseVx || 0) - f.vx) * 0.05
+      f.vy += ((f.cruiseVy || 0) - f.vy) * 0.05
+    }
     const damp = Math.pow(0.06, dtSec)
     f.vx *= damp
     f.vy *= damp
@@ -176,7 +189,15 @@ function updateGame(now, dt, cx, cy) {
     if (best < GAME.eatDist) {
       GAME.fish = GAME.fish.filter((x) => x !== target)
       // 鲸鱼那边播放和喂食一样的反应；全屏层那边冒个水花
-      sendToWin('pet:fish-eaten', { x: target.x, y: target.y })
+      // 桌宠只知道自己在窗口里的坐标：这里换算成窗口相对位置再发，
+      // 鱼被吃掉时贴图才会从嘴边开始，而不是永远从左边冒出来。
+      let relX, relY
+      try {
+        const b = win.getBounds()
+        relX = target.x - b.x
+        relY = target.y - b.y
+      } catch { /* 窗口刚销毁 */ }
+      sendToWin('pet:fish-eaten', { x: relX, y: relY })
       gameSend('pet:fish-eaten', { x: target.x - wa.x, y: target.y - wa.y })
     } else if (!dragStartBounds) {
       const ux = (target.x - cx) / best
@@ -941,6 +962,44 @@ function installSpec() {
   }
 }
 
+/**
+ * 把 DSH 的窗口切到前台。
+ *
+ * 为什么不直接开浏览器：DSH 的 web 服务要令牌，而令牌只存在桌面端进程里，
+ * 用浏览器打开裸地址只会得到「dsh web authentication required」。
+ * 所以点「去更新」时，把已经登录着的 DSH 窗口叫到前面来更靠谱。
+ * @returns {Promise<boolean>} 是否找到并激活了窗口
+ */
+function bringDshToFront() {
+  if (process.platform !== 'win32') return Promise.resolve(false)
+  const script = `
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public class W {
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
+}
+'@
+$p = Get-Process | Where-Object { $_.MainWindowTitle -like '*DeepSeek Harness*' } | Select-Object -First 1
+if ($p) {
+  [W]::ShowWindow($p.MainWindowHandle, 9) | Out-Null
+  [W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
+  'FOUND'
+} else { 'NOTFOUND' }
+`
+  return new Promise((resolve) => {
+    try {
+      require('node:child_process').execFile(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-Command', script],
+        { windowsHide: true, timeout: 5000 },
+        (err, stdout) => resolve(!err && String(stdout).includes('FOUND')),
+      )
+    } catch { resolve(false) }
+  })
+}
+
 /** DSH 自己的界面地址（用于把用户送回插件页）。 */
 function dshOrigin() {
   const raw = process.env.WHALE_PET_URL || ''
@@ -1235,9 +1294,13 @@ ipcMain.on('pet:menu-resize', (_e, h) => {
 })
 ipcMain.on('pet:menu-close', () => closeMenuWindow())
 
+// 这些操作做完之后菜单继续保持打开，方便连着改好几项
+const KEEP_MENU_OPEN = new Set(['follow', 'roam', 'size', 'skin', 'dance'])
+
 ipcMain.on('pet:menu-action', (_e, a) => {
   if (!a || !a.id) return
-  closeMenuWindow()
+  const keepOpen = KEEP_MENU_OPEN.has(a.id) && !(a.id === 'skin' && a.value === 'custom')
+  if (!keepOpen) closeMenuWindow()
   switch (a.id) {
     case 'follow': setFollow(!FOLLOW.enabled); break
     case 'roam':
@@ -1266,17 +1329,20 @@ ipcMain.on('pet:menu-action', (_e, a) => {
     case 'balance': queryBalance(); break
     case 'help': openHelpPanel(); break
     case 'update': {
-      // 现在统一走插件页：点「去更新」直接把 DSH 的插件页面打开，
-      // 不再冒气泡说“链接已复制”之类的废话。
-      const origin = dshOrigin()
-      try {
-        if (origin) shell.openExternal(origin)
-        else shell.openExternal(UPDATE_PAGE)
-      } catch { /* 打不开就算了 */ }
+      // 先把 DSH 窗口叫到前面（插件页就在里面）。直接开浏览器不行：
+      // DSH 的 web 要令牌，令牌只存在桌面端进程里，浏览器打开只会 401。
+      bringDshToFront().then((ok) => {
+        if (ok) return
+        try { shell.openExternal(dshOrigin() || UPDATE_PAGE) } catch { /* 打不开就算了 */ }
+      })
       break
     }
     case 'minimize': try { if (win && !win.isDestroyed()) win.minimize() } catch { /* 忽略 */ } break
     case 'quit': app.quit(); break
+  }
+  // 菜单还开着：把最新状态推过去，勾选标记和副标题立刻更新
+  if (keepOpen && menuWin && !menuWin.isDestroyed()) {
+    try { menuWin.webContents.send('pet:menu-state', menuStateNow()) } catch { /* 忽略 */ }
   }
 })
 
@@ -1460,6 +1526,85 @@ let lastTriedUrls = []
 
 let gateway = null
 
+// ---- 深度求索（思考）状态 ----
+// DSH 的回合里，正文出来之前这段时间就是模型在想：从 turn/start 到第一段 text-delta。
+// 桌宠头上会冒省略号；结果出来时闪一下灯泡。
+let thinking = false
+let thinkingTimer = null
+let thinkPollTimer = null, thinkBaseline = 0, thinkSession = null, thinkUsageBaseline = -1
+
+// DSH 对外的 $events 流只有「会话开始跑 / 跑完」两种通知，没有逐条消息。
+// 想让灯泡正好落在「开始输出结果」那一刻，就只能自己盯：轮询 session.list，
+// 一旦这轮会话的 updatedAt 往前走了，说明已经有新的产出，思考阶段结束。
+function usageSum(it) {
+  try {
+    const u = (it.projections && it.projections.values && it.projections.values.tokenUsage) || {}
+    let sum = 0
+    for (const k of Object.keys(u)) if (typeof u[k] === 'number') sum += u[k]
+    return sum
+  } catch { return 0 }
+}
+
+async function startThinkWatch() {
+  try {
+    const { items } = await call('session.list', {})
+    const live = (items || []).filter((it) => it && !it.blank)
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    if (!live.length) return
+    thinkSession = live[0].sessionId
+    thinkBaseline = live[0].updatedAt || 0
+    thinkUsageBaseline = usageSum(live[0])
+  } catch { return }
+  clearInterval(thinkPollTimer)
+  thinkPollTimer = setInterval(async () => {
+    try {
+      const { items } = await call('session.list', {})
+      const it = (items || []).find((x) => x && x.sessionId === thinkSession)
+      if (!it) return
+      // 只要出现下面任一情况，就认为「开始输出了」：
+      //  token 数动了（模型开始吐字，最灵敏）
+      //  updatedAt 前进（这一轮落了新内容）
+      //  running 变 false（跑完了，兜底）
+      const u = usageSum(it)
+      if (thinkUsageBaseline >= 0 && u > thinkUsageBaseline) {
+        setThinking(false)
+        return
+      }
+      if ((it.updatedAt || 0) > thinkBaseline || it.running === false) setThinking(false)
+    } catch { /* 网络抖动，下一轮再看 */ }
+  }, 300)
+}
+
+// 如果桌宠是在「思考途中」才启动的，它就错过了那次 status=true。
+// 连上后看一眼最近有没有活动：刚刚还在动，就当作正在思考，接着盯。
+async function resumeThinkingIfActive() {
+  try {
+    const { items } = await call('session.list', {})
+    const live = (items || []).filter((it) => it && !it.blank)
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    if (!live.length) return
+    const it = live[0]
+    // session.list 的条目里带 running：这才是「这个会话正在跑」的权威标志，
+    // 比拿 updatedAt 猜时间窗靠谱（深度思考期间根本没有新消息落库）
+    if (it.running === true) setThinking(true)
+  } catch { /* 还没连好，下次再说 */ }
+}
+
+function setThinking(on) {
+  if (thinking === on) return
+  thinking = on
+  sendToWin('pet:thinking', on)
+  clearTimeout(thinkingTimer)
+  if (on) {
+    // 兜底：万一收不到结束事件，最多转 5 分钟就收
+    thinkingTimer = setTimeout(() => setThinking(false), 5 * 60 * 1000)
+    startThinkWatch()
+  } else {
+    clearInterval(thinkPollTimer)
+    thinkPollTimer = null
+  }
+}
+
 function pushMood(next) {
   if (mood === next) return
   mood = next
@@ -1510,6 +1655,20 @@ function handleFrame(raw) {
   if (!raw || typeof raw !== 'object') return
   // 控制帧
   if (raw.type === 'ready') return
+
+  // DSH 新版推的是 { type:'emit', event:'api-session/xxx', args:[...] }
+  // 之前按 payload.events 解析，永远取不到东西，所以思考提示一直没反应。
+  if (raw.type === 'emit' && typeof raw.event === 'string') {
+    const args = Array.isArray(raw.args) ? raw.args : []
+    if (raw.event === 'api-session/status') {
+      // args = [sessionId, running]
+      setThinking(!!args[1])
+    } else if (raw.event === 'api-session/activity') {
+      // 有人在用这个会话：算在跑
+      setThinking(true)
+    }
+    return
+  }
   let frame = raw
   // 兼容旧版包装：{ type:'server-request', method, payload }
   if (raw.type === 'server-request') {
@@ -1543,9 +1702,16 @@ function handleFrame(raw) {
 }
 
 function handleSessionEvent(event, watching) {
+  let _ch = null
+  try { _ch = event && event.data && event.data.chunk } catch { /* 忽略 */ }
   switch (event.type) {
     case 'assistant/chunk': {
       const chunk = event.data && event.data.chunk
+      if (chunk) {
+        // 正文开始 = 想完了；reasoning 片段 = 还在想
+        if (chunk.type === 'text-delta') setThinking(false)
+        else if (String(chunk.type || '').indexOf('reasoning') >= 0) setThinking(true)
+      }
       if (watching && chunk && chunk.type === 'text-delta' && chunk.text) {
         sendToWin('pet:stream', {
           kind: 'chunk',
@@ -1558,6 +1724,7 @@ function handleSessionEvent(event, watching) {
       break
     }
     case 'assistant/message': {
+      setThinking(false)
       if (watching) {
         const text = ((event.data && event.data.content) || [])
           .filter((b) => b && b.type === 'text' && b.text)
@@ -1569,13 +1736,19 @@ function handleSessionEvent(event, watching) {
       break
     }
     case 'turn/end': {
+      setThinking(false)
       if (watching) sendToWin('pet:stream', { kind: 'done' })
       sendMood('ready')
       break
     }
     case 'turn/start':
     case 'step/start':
+      setThinking(true)
+      sendMood('working')
+      break
     case 'tool/call':
+      // 调工具说明这一轮在想的事告一段落，先收掉省略号，等下一段再说
+      setThinking(false)
       sendMood('working')
       break
     default:
@@ -1593,7 +1766,9 @@ function connectGateway() {
     },
     {
       onStatus: (isConnected, url, info) => {
+        if (isConnected) resumeThinkingIfActive()
         connected = isConnected
+        if (!isConnected) setThinking(false)
         // 窗口可能已销毁（用户在退出时网关恰好断开），sendToWin 会安全跳过
         sendToWin('pet:connection', {
           connected: isConnected,
