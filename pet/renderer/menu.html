@@ -202,11 +202,20 @@
             el.addEventListener('click', (e) => {
                 e.stopPropagation();
                 api.menuAction && api.menuAction({ id: el.dataset.pid, value: el.dataset.v });
-                close();
+                if (keepAfter(el.dataset.pid, el.dataset.v)) render();
+                else close();
             });
         });
         // 展开子菜单后，窗口可能装不下，通知主进程调整高度
         if (api.menuResize) api.menuResize(Math.ceil(root.getBoundingClientRect().height) + 12);
+    }
+
+    // 这些操作点完菜单保持打开，方便连续调；其余（播放器/帮助/退出等）照旧关掉
+    const KEEP_OPEN = new Set(['follow', 'roam', 'size', 'skin', 'dance']);
+    function keepAfter(id, value) {
+        if (!KEEP_OPEN.has(id)) return false;
+        if (id === 'skin' && value === 'custom') return false;   // 会另开取色面板
+        return true;
     }
 
     function onClick(it) {
@@ -216,7 +225,7 @@
             return;
         }
         api.menuAction && api.menuAction({ id: it.id });
-        close();
+        if (!keepAfter(it.id)) close();
     }
 
     function close() {
