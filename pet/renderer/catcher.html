@@ -1,0 +1,19 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; background: transparent; overflow: hidden; }
+</style>
+</head>
+<body>
+<script>
+  // 这一层只在左键动作面板打开时存在：点到它 = 点了鲸鱼以外的地方
+  function hit() {
+    try { window.petWindow.catcherHit() } catch (e) {}
+  }
+  document.addEventListener('mousedown', hit, true)
+  document.addEventListener('contextmenu', function (e) { e.preventDefault(); hit() }, true)
+</script>
+</body>
+</html>
