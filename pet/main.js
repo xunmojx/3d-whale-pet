@@ -627,8 +627,18 @@ ipcMain.on('pet:spinning', (_e, v) => { rendererSpinning = !!v })
 ipcMain.on('pet:sleeping', (_e, v) => { rendererSleeping = !!v })
 ipcMain.on('pet:panel', (_e, v) => {
   panelOpen = !!v
-  if (panelOpen) openCatcher()
-  else closeCatcher()
+  if (panelOpen) {
+    // 立刻放开鼠标命中：等主循环下一拍（~15ms）再放开，头一两下点击会落到桌面上
+    try { if (win && !win.isDestroyed()) win.setIgnoreMouseEvents(false, { forward: true }) } catch { /* 忽略 */ }
+    clickThrough = false
+    // 面板开着的时候它必须站住：漫游/跟随会把窗口挪走，
+    // 鼠标明明在按钮上，结果点到的是桌面 → 面板被当成「点外面」关掉
+    followPausedUntil = Number.MAX_SAFE_INTEGER
+    openCatcher()
+  } else {
+    followPausedUntil = 0
+    closeCatcher()
+  }
 })
 
 /**
@@ -638,9 +648,10 @@ ipcMain.on('pet:panel', (_e, v) => {
  * 其余地方的点击落到这层上，用来收起面板。
  */
 let catcherWin = null
-function openCatcher() {
+// 启动时就把这层建好（隐藏），面板打开只是「显示它」——
+// 现场创建要 200~400ms，那段时间按钮点不动，就是用户说的「得等一会」。
+function buildCatcher() {
   if (catcherWin && !catcherWin.isDestroyed()) return
-  if (!win || win.isDestroyed()) return
   const wa = screen.getPrimaryDisplay().workArea
   catcherWin = new BrowserWindow({
     x: wa.x, y: wa.y, width: wa.width, height: wa.height,
@@ -649,19 +660,19 @@ function openCatcher() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   })
   catcherWin.loadFile(path.join(__dirname, 'renderer', 'catcher.html'))
-  catcherWin.once('ready-to-show', () => {
-    try {
-      catcherWin.setAlwaysOnTop(true, 'pop-up-menu')   // 低于桌宠的 screen-saver
-      catcherWin.showInactive()
-    } catch { /* 忽略 */ }
-  })
+  try { catcherWin.setAlwaysOnTop(true, 'pop-up-menu') } catch { /* 忽略 */ }
   catcherWin.on('closed', () => { catcherWin = null })
+}
+
+function openCatcher() {
+  if (!win || win.isDestroyed()) return
+  buildCatcher()
+  if (!catcherWin || catcherWin.isDestroyed()) return
+  try { catcherWin.showInactive() } catch { /* 忽略 */ }
 }
 function closeCatcher() {
   if (!catcherWin || catcherWin.isDestroyed()) { catcherWin = null; return }
-  const w = catcherWin
-  catcherWin = null
-  try { w.destroy() } catch { /* 已关 */ }
+  try { catcherWin.hide() } catch { /* 忽略 */ }
 }
 ipcMain.on('catcher-hit', () => {
   closeCatcher()
@@ -945,6 +956,7 @@ function setFollow(enabled) {
   if (FOLLOW.enabled) followPausedUntil = 0
   saveConfig()
   startFollowLoop()
+  setTimeout(() => { try { buildCatcher() } catch { /* 忽略 */ } }, 1500)
 }
 
 // ---- 拖动：锁定窗口尺寸 + 相对总位移（修复 Windows 显示缩放下反复拖动窗口变大的 bug）----
