@@ -1025,6 +1025,8 @@
             let beatPulse = 0, spinRemaining = 0, spinAngle = 0; // 节拍脉冲 / 转圈角度
             // 想到结果时的「开心一下」：慢慢上浮再落回（像在水里），同时扇鳍摆尾眯眼
             let celebrateAt = 0, celebrateUntil = 0;
+            // 被点一下：短促地小跳一下（0.5 秒），幅度明显但不像高兴时那么大幅
+            let popAt = 0;
             window.__petCelebrate = function () {
                 celebrateAt = performance.now();
                 celebrateUntil = celebrateAt + 2600;
@@ -1296,7 +1298,12 @@
 
                 // —— 想到结果时的上浮（1.5 秒上去再回来，慢一点才像在水里） ——
                 const nowMs = performance.now();
-                let hopY = 0, celebK = 0;
+                let hopY = 0, celebK = 0, popK = 0;
+                if (popAt && nowMs - popAt < 500) {
+                    const pk = (nowMs - popAt) / 500;      // 0 → 1
+                    popK = Math.sin(Math.PI * pk);         // 上去再回来
+                    hopY += popK * 0.07;
+                }
                 if (nowMs < celebrateUntil) {
                     const ck = (nowMs - celebrateAt) / 1500;
                     if (ck >= 0 && ck <= 1) hopY = Math.sin(Math.PI * ck) * 0.10;
@@ -1305,8 +1312,13 @@
 
                 // —— 漂浮 + 呼吸 + 节拍弹跳（音乐小幅上浮） ——
                 model.position.y = Math.sin(t * moodState.floatSpeed) * moodState.floatAmp * (1 + 0.3 * boost) * (isSleeping ? 0.5 : 1) + hopY;
-                const s = 1 + Math.sin(t * moodState.floatSpeed * 1.6) * moodState.breath;
-                model.scale.set(s, s, s);
+                let s = 1 + Math.sin(t * moodState.floatSpeed * 1.6) * moodState.breath;
+                // 小跳时挤一下：横向微胀、纵向微压，看起来是「弹」起来的
+                if (popK > 0) {
+                    model.scale.set(s * (1 + 0.07 * popK), s * (1 - 0.07 * popK), s);
+                } else {
+                    model.scale.set(s, s, s);
+                }
                 // 朝向鼠标的俯仰放在父分组上：镜像（scale.x 为负）之后再做旋转，
                 // 视觉方向才不会被镜像翻反。绕的原点就是虎鲸自己的中心。
                 petGroup.rotation.z = FACE.tilt;
@@ -1333,7 +1345,7 @@
                 SWIM.swim += (SWIM.targetSwim - SWIM.swim) * Math.min(1, swimK);
                 // 留 12% 的底：静止时不是完全不动，而是很轻的一点点浮动；
                 // 游起来再推到 100%。完全静止会显得像模型卡住了。
-                const swingPart = (swRaw >= 0 ? swRaw * amp * 0.50 : swRaw * amp * 1.50) * (0.12 + 0.88 * SWIM.swim) * (1 + 0.8 * celebK);
+                const swingPart = (swRaw >= 0 ? swRaw * amp * 0.50 : swRaw * amp * 1.50) * (0.12 + 0.88 * SWIM.swim) * (1 + 0.8 * celebK + 1.1 * popK);
                 const bendA = swingPart - 0.300;   // 偏置不乘：静止时保持那条下垂的静态姿态
                 applyTailBend(bendA);
                 tailGroup.rotation.z = TAIL_BASE_Z + bendA;
@@ -1341,7 +1353,7 @@
 
                 // —— 胸鳍：划水 + 节拍扑腾 ——
                 const pf = moodState.pecFlap * aMul * sleepF;
-                const pecVal = pf * (Math.sin(t * w + 0.6) + 0.5 * Math.sin(t * w * 2 + 1.8)) * (1 + 1.3 * celebK);
+                const pecVal = pf * (Math.sin(t * w + 0.6) + 0.5 * Math.sin(t * w * 2 + 1.8)) * (1 + 1.3 * celebK + 1.6 * popK);
                 for (const piv of pecFins) {
                     piv.rotation.x = pecVal;
                     // 身体网格在点头时是逐段弯的，胸鳍是独立 mesh，必须按「根部所在的 u」
@@ -1480,7 +1492,7 @@
             window.__petSetSleeping = function (on) { isSleeping = !!on; };
             window.__petHappy = function () { beatPulse = 1; };
             // 被点一下：轻轻抖一下尾巴，和有没有台词无关，保证总有反馈
-            window.__petClickReact = function () { beatPulse = Math.max(beatPulse, 0.8); }; // 投喂/爱心触发一次欢快扑腾
+            window.__petClickReact = function () { popAt = performance.now(); }; // 投喂/爱心触发一次欢快扑腾
         })();
     </script>
     <script>
