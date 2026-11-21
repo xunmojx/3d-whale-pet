@@ -291,6 +291,15 @@ function loadConfig() {
   if (typeof savedCfg.skin === 'string' && savedCfg.skin) currentSkin = savedCfg.skin
   if (typeof savedCfg.dance === 'number') currentDance = savedCfg.dance
   if (typeof savedCfg.name === 'string') petName = savedCfg.name
+  if (Array.isArray(savedCfg.lineOff)) lineOff = savedCfg.lineOff.map(String)
+  if (savedCfg.customLines && typeof savedCfg.customLines === 'object') {
+    const next = { click: [], idle: [], pet: [], game: [] }
+    for (const cat of Object.keys(next)) {
+      const arr = savedCfg.customLines[cat]
+      if (Array.isArray(arr)) next[cat] = arr.map(String).filter(Boolean)
+    }
+    customLines = next
+  }
 }
 function saveConfig() {
   if (wiping) return          // 正在清数据：退出时也别写回
@@ -302,6 +311,8 @@ function saveConfig() {
     savedCfg.skin = currentSkin
     savedCfg.dance = currentDance
     savedCfg.name = petName
+    savedCfg.lineOff = lineOff
+    savedCfg.customLines = customLines
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(savedCfg, null, 2))
   } catch {
     // 写不进去（权限之类）就算了，不该影响桌宠运行
@@ -1061,6 +1072,97 @@ function dshOrigin() {
   }
 }
 
+// ==================== 台词（内置 + 自定义） ====================
+// 内置台词写在代码里，不能被删；用户只能勾选「用不用」。
+// 自定义台词存本地配置，改版不会覆盖。
+const DEFAULT_LINES = {
+  click: ['你好呀，我是小虎鲸！', '有事要我帮忙吗？', '摸鱼中，别打扰我~', '盯——你在看什么呀？'],
+  idle: [
+    '今天也辛苦啦，我在这儿呢',
+    '你专心的时候，我就在旁边慢慢游',
+    '刚才那个转身帅吧？',
+    '有点想吃小鱼干……',
+    '坐久啦，起来伸个懒腰嘛',
+    '我不吵你，就看看你',
+    '被你发现我在偷看你了',
+    '我刚才打了个哈欠，你也打一个？',
+    '累了就歇会儿，我帮你看着屏幕',
+    '水底很安静的，适合想事情',
+    '今天也做得很好哦，我说了算',
+    '要不要摸摸我？我头很软的',
+    '别急，慢慢来，我陪着你',
+    '我数了一下，你已经认真很久了',
+  ],
+  pet: ['嘿嘿，舒服~', '再摸摸嘛', '我头很软的，对吧', '被你摸到啦', '呼噜呼噜……', '这个力度刚刚好'],
+  game: ['好吃！', '再来一条', '嗯……鲜', '这条不错', '还要！', '别闹，我在捕猎', '鱼呢？', '等我抓到再说'],
+}
+// idle 的内置台词由渲染层自己提供（数量多且带名字替换），
+// 这里留空表示「以内置为准」，编辑器只负责开关与追加。
+
+let lineOff = []            // 被关掉的内置台词，形如 'click:2'
+let customLines = { click: [], idle: [], pet: [], game: [] }
+
+function linesForPet() {
+  const out = {}
+  for (const cat of Object.keys(DEFAULT_LINES)) {
+    const builtin = DEFAULT_LINES[cat].filter((_, i) => !lineOff.includes(cat + ':' + i))
+    out[cat] = { builtin, custom: Array.isArray(customLines[cat]) ? customLines[cat].slice() : [] }
+  }
+  return out
+}
+
+function pushLines() {
+  sendToWin('pet:lines', linesForPet())
+}
+
+ipcMain.on('pet:lines-close', () => {
+  if (linesWin && !linesWin.isDestroyed()) linesWin.close()
+})
+
+ipcMain.handle('pet:lines-get', () => ({ defaults: DEFAULT_LINES, lineOff, custom: customLines }))
+ipcMain.handle('pet:lines-save', (_e, payload) => {
+  try {
+    const p = payload || {}
+    if (Array.isArray(p.lineOff)) lineOff = p.lineOff.map(String).slice(0, 500)
+    if (p.custom && typeof p.custom === 'object') {
+      const next = { click: [], idle: [], pet: [], game: [] }
+      for (const cat of Object.keys(next)) {
+        const arr = p.custom[cat]
+        if (Array.isArray(arr)) next[cat] = arr.map((x) => String(x).slice(0, 60)).filter(Boolean).slice(0, 200)
+      }
+      customLines = next
+    }
+    saveConfig()
+    pushLines()
+    // 编辑器也要看到最新数据
+    if (linesWin && !linesWin.isDestroyed()) {
+      try { linesWin.webContents.send('pet:lines-state', { defaults: DEFAULT_LINES, lineOff, custom: customLines }) } catch { /* 忽略 */ }
+    }
+    return { ok: true }
+  } catch (e) { return { ok: false, error: String(e && e.message) } }
+})
+
+let linesWin = null
+function openLinesPanel() {
+  if (linesWin && !linesWin.isDestroyed()) {
+    try { linesWin.show(); linesWin.moveTop(); linesWin.focus() } catch { /* 忽略 */ }
+    return
+  }
+  linesWin = new BrowserWindow({
+    width: 460, height: 560,
+    title: '台词管理',
+    resizable: true,
+    backgroundColor: '#141a2c',
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+  })
+  linesWin.loadFile(path.join(__dirname, 'renderer', 'lines.html'))
+  try { linesWin.setAlwaysOnTop(true, 'screen-saver') } catch { /* 忽略 */ }
+  linesWin.once('ready-to-show', () => {
+    try { linesWin.show(); linesWin.moveTop(); linesWin.focus() } catch { /* 忽略 */ }
+  })
+  linesWin.on('closed', () => { linesWin = null })
+}
+
 // ==================== 取名 ====================
 let renameWin = null
 
@@ -1373,12 +1475,14 @@ ipcMain.on('pet:menu-action', (_e, a) => {
     case 'dance':
       currentDance = Number(a.value)
       sendToWin('pet:set-dance-freq', currentDance)
+    pushLines()
       saveConfig()
       break
     case 'rename': openRenamePanel(); break
     case 'player': openPlayer(); break
     case 'balance': queryBalance(); break
     case 'help': openHelpPanel(); break
+    case 'lines': openLinesPanel(); break
     case 'update': {
       // 先把 DSH 窗口叫到前面（插件页就在里面）。直接开浏览器不行：
       // DSH 的 web 要令牌，令牌只存在桌面端进程里，浏览器打开只会 401。
