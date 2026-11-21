@@ -121,6 +121,10 @@ contextBridge.exposeInMainWorld('petBridge', {
   closeLines() {
     ipcRenderer.send('pet:lines-close')
   },
+  // 页面准备好后主动要一次台词（启动时那一次推送可能比监听更早）
+  askLines() {
+    ipcRenderer.send('pet:lines-want')
+  },
   linesGet() {
     return ipcRenderer.invoke('pet:lines-get')
   },
