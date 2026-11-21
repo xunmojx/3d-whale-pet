@@ -26,6 +26,8 @@
   .empty { color: rgba(200,210,240,.4); padding: 4px 0; }
   .hint { color: rgba(200,210,240,.45); font-size: 11px; margin: 2px 0 10px; }
   .mini { font-size: 11px; padding: 2px 7px; }
+  .editbox { flex: 1; padding: 5px 8px; border-radius: 7px; border: 1px solid #4d6bfe; background: rgba(255,255,255,.06); color: #dfe6ff; font: inherit; }
+  label.row { cursor: pointer; }
 </style>
 </head>
 <body>
@@ -46,6 +48,7 @@
     { id: 'game', label: '游戏里' },
   ];
   let state = { defaults: {}, lineOff: [], custom: {} };
+  let editing = null;   // { cat, idx } 正在改的那条
 
   function esc(t) {
     return String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -61,11 +64,18 @@
         return '<label class="row"><input type="checkbox" data-builtin="' + c.id + ':' + i + '" ' + (off ? '' : 'checked') + '>' +
           '<span class="txt ' + (off ? 'off' : '') + '">' + esc(txt) + '</span><span class="tag">内置</span></label>';
       }).join('');
-      const mine = customs.map((txt, i) =>
-        '<div class="row"><span class="txt">' + esc(txt) + '</span><span class="tag mine">我的</span>' +
-        '<button class="mini ghost" data-edit="' + c.id + ':' + i + '">改</button>' +
-        '<button class="mini ghost" data-del="' + c.id + ':' + i + '">删</button></div>'
-      ).join('');
+      const mine = customs.map((it, i) => {
+        const on = it.on !== false;
+        if (editing && editing.cat === c.id && editing.idx === i) {
+          return '<div class="row"><input class="editbox" data-editbox="' + c.id + ':' + i + '" value="' + esc(it.text) + '" maxlength="60">' +
+            '<button class="mini" data-save="' + c.id + ':' + i + '">存</button>' +
+            '<button class="mini ghost" data-cancel="1">取消</button></div>';
+        }
+        return '<label class="row"><input type="checkbox" data-custom="' + c.id + ':' + i + '" ' + (on ? 'checked' : '') + '>' +
+          '<span class="txt ' + (on ? '' : 'off') + '">' + esc(it.text) + '</span><span class="tag mine">我的</span>' +
+          '<button class="mini ghost" data-edit="' + c.id + ':' + i + '">改</button>' +
+          '<button class="mini ghost" data-del="' + c.id + ':' + i + '">删</button></label>';
+      }).join('');
       return '<section class="cat"><h2>' + esc(c.label) + '</h2>' +
         (builtin.length ? rows : '<div class="empty">这一类没有内置台词</div>') +
         (mine ? '<div style="margin-top:8px">' + mine + '</div>' : '') +
@@ -83,13 +93,44 @@
         render();
       });
     });
+    root.querySelectorAll('[data-custom]').forEach((el) => {
+      el.addEventListener('change', () => {
+        const [cat, idx] = el.dataset.custom.split(':');
+        state.custom[cat][Number(idx)].on = el.checked;
+        save();
+        render();
+      });
+    });
+    root.querySelectorAll('[data-edit]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const [cat, idx] = el.dataset.edit.split(':');
+        editing = { cat, idx: Number(idx) };
+        render();
+        const box = document.querySelector('[data-editbox]');
+        if (box) { box.focus(); box.select(); }
+      });
+    });
+    root.querySelectorAll('[data-save]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const [cat, idx] = el.dataset.save.split(':');
+        const box = document.querySelector('[data-editbox]');
+        const v = box ? box.value.trim() : '';
+        if (v) state.custom[cat][Number(idx)].text = v;
+        editing = null;
+        save();
+        render();
+      });
+    });
+    root.querySelectorAll('[data-cancel]').forEach((el) => {
+      el.addEventListener('click', () => { editing = null; render(); });
+    });
     root.querySelectorAll('[data-add]').forEach((el) => {
       el.addEventListener('click', () => {
         const cat = el.dataset.add;
         const inp = root.querySelector('[data-input="' + cat + '"]');
         const v = (inp.value || '').trim();
         if (!v) return;
-        state.custom[cat] = (state.custom[cat] || []).concat([v]);
+        state.custom[cat] = (state.custom[cat] || []).concat([{ text: v, on: true }]);
         save();
         render();
       });
@@ -98,19 +139,6 @@
       el.addEventListener('click', () => {
         const [cat, idx] = el.dataset.del.split(':');
         state.custom[cat].splice(Number(idx), 1);
-        save();
-        render();
-      });
-    });
-    root.querySelectorAll('[data-edit]').forEach((el) => {
-      el.addEventListener('click', () => {
-        const [cat, idx] = el.dataset.edit.split(':');
-        const cur = state.custom[cat][Number(idx)];
-        const v = window.prompt('修改这句台词：', cur);
-        if (v === null) return;
-        const t = v.trim();
-        if (!t) return;
-        state.custom[cat][Number(idx)] = t;
         save();
         render();
       });
