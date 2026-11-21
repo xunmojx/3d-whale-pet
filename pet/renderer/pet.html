@@ -1584,6 +1584,26 @@
                 emit: function (ev, arg) { (petEvents[ev] || []).forEach(function (cb) { cb(arg); }); },
             };
             const LINES = ['你好呀，我是小虎鲸！', '有事要我帮忙吗？', '摸鱼中，别打扰我~', '盯——你在看什么呀？'];
+
+                // 主进程会把「内置里勾选保留的 + 自定义的」发过来；
+                // 没收到就退回代码里的内置台词，保证永远有话说。
+                window.__petLines = null;
+                window.__petLinePool = function (cat, fallback) {
+                    const sets = window.__petLines;
+                    const out = [];
+                    if (sets && sets[cat]) {
+                        const b = sets[cat].builtin || [];
+                        const c = sets[cat].custom || [];
+                        for (const x of b) out.push(x);
+                        for (const x of c) out.push(x);
+                    }
+                    if (!out.length) for (const x of (fallback || [])) out.push(x);
+                    return out;
+                };
+                window.__petPickLineFrom = function (cat, fallback) {
+                    const pool = window.__petLinePool(cat, fallback);
+                    return pool.length ? pool[Math.floor(Math.random() * pool.length)] : '';
+                };
             // 小游戏进行中说的话，和平时那套台词分开
             const GAME_LINES = {
                 eat: ['好吃！', '再来一条', '嗯……鲜', '这条不错', '还要！'],
@@ -1591,7 +1611,7 @@
                 pet: ['等我吃完嘛', '别闹，正忙着呢', '痒痒的'],
             };
             window.__petGameLine = function (kind) {
-                const pool = GAME_LINES[kind];
+                const pool = window.__petLinePool('game', GAME_LINES[kind] || []);
                 if (!pool || !pool.length) return '';
                 return pool[Math.floor(Math.random() * pool.length)];
             };
@@ -1643,7 +1663,7 @@
                     const t = NAME_LINES[Math.floor(Math.random() * NAME_LINES.length)];
                     return t.replace(/\{name\}/g, petName);
                 }
-                return IDLE_LINES[Math.floor(Math.random() * IDLE_LINES.length)];
+                return window.__petPickLineFrom('idle', IDLE_LINES);
             }
             window.__petPickLine = pickIdleLine;   // 方便自检：看看现在会抽到什么台词
             let idleChatTimer = null;
@@ -1705,7 +1725,7 @@
                             playSound('click');
                             const clickLine = window.__petGameMode && window.__petGameLine
                                 ? window.__petGameLine('click')
-                                : LINES[Math.floor(Math.random() * LINES.length)];
+                                : window.__petPickLineFrom('click', LINES);
                             show(clickLine, 3000);
                             window.Pet.emit('click');
                             showActionBubbles();
@@ -1961,7 +1981,7 @@
                         'setSpinning', 'setSleeping', 'onCursor', 'reportHit',
                     ],
                     petBridge: [
-                        'onMood', 'onThinking', 'onConnection', 'onAbortSpin', 'onSwim',
+                        'onMood', 'onThinking', 'onLines', 'onConnection', 'onAbortSpin', 'onSwim',
                         'onLog', 'onReply', 'onBalance', 'queryBalance',
                         'onStream', 'prompt',
                         'onSetSkin', 'onSetCustomSkin', 'onSetSize', 'onSetDanceFreq',
@@ -2011,6 +2031,8 @@
                     });
                 } catch { /* 音频不可用则静默 */ }
             }
+            // 台词：主进程把「保留的内置 + 自定义」推过来
+            if (bridge.onLines) bridge.onLines(function (d) { window.__petLines = d || null; });
             bridge.onMood((mood) => {
                 window.Pet.setMood(mood);
                 beep(mood);
@@ -2195,7 +2217,7 @@
                                         if (window.Pet && window.Pet.say) {
                                             const petLine = window.__petGameMode && window.__petGameLine
                                                 ? window.__petGameLine('pet')
-                                                : PET_LINES[Math.floor(Math.random() * PET_LINES.length)];
+                                                : window.__petPickLineFrom('pet', PET_LINES);
                                             window.Pet.say(petLine, 2600);
                                         }
                                     }
