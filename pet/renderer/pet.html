@@ -50,6 +50,37 @@
             z-index: 20;
         }
         .bubble.show { opacity: 1; }
+        /* 深度求索时头顶的省略号 */
+        .pet-think {
+            position: fixed;
+            transform: translate(-50%, -100%);
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            color: #7f9cff;
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+            pointer-events: none;
+            z-index: 25;
+            opacity: 0;
+            transition: opacity 0.25s;
+        }
+        .pet-think.on { opacity: 1; }
+        /* 想完时的灯泡：一闪一闪 */
+        .pet-bulb {
+            position: fixed;
+            transform: translate(-50%, -100%);
+            font-size: 20px;
+            pointer-events: none;
+            z-index: 26;
+            opacity: 0;
+        }
+        .pet-bulb.on {
+            animation: bulbBlink 0.55s ease-in-out 5;
+        }
+        @keyframes bulbBlink {
+            0%, 100% { opacity: 0.15; transform: translate(-50%, -100%) scale(0.92); }
+            50% { opacity: 1; transform: translate(-50%, -108%) scale(1.08); }
+        }
         .bubble::-webkit-scrollbar { width: 0; height: 0; }
         .bubble::after {
             content: '';
@@ -992,6 +1023,12 @@
             // ==================== 互动加速：悬停 / 单击 → 用力游 ====================
             let hoverActive = false, clickBoost = 0, danceLevel = 0; // danceLevel: 音乐频谱驱动（温和）
             let beatPulse = 0, spinRemaining = 0, spinAngle = 0; // 节拍脉冲 / 转圈角度
+            // 想到结果时的「开心一下」：慢慢上浮再落回（像在水里），同时扇鳍摆尾眯眼
+            let celebrateAt = 0, celebrateUntil = 0;
+            window.__petCelebrate = function () {
+                celebrateAt = performance.now();
+                celebrateUntil = celebrateAt + 2600;
+            };
             let danceFreq = 0.7; // 用户设定的跳舞强度 0-1（0=关闭，1=最强）
             // ---- 点头（代替原来那种每帧都在抖的小幅摆动）----
             // 一次点头 = 俯仰角度走一遍 0 → 1 → 0，时长 NOD_SEC。
@@ -1145,6 +1182,16 @@
                     lastCursorAt = performance.now();
                 } else {
                     const nowPerf = performance.now();
+                    // 鼠标刚动过（由 onSwim 打的时间戳）：取消待机动作，
+                    // 正在转的话加速收尾
+                    const cursorAt = window.__petCursorActiveAt || 0;
+                    if (cursorAt > lastCursorAt) {
+                        lastCursorAt = cursorAt;
+                        nextIdleAt = 0;
+                        spinQueue = [];
+                        if (idleSpinning) idleSpinFast = true;
+                        if (idleYawSpinning) idleYawFast = true;
+                    }
                     // 人还在动鼠标就不算待机：把排好的那次取消掉
                     if (nowPerf - lastCursorAt < 1500) nextIdleAt = 0;
                     // 在听歌：30~60 秒动一次，而且只转圈（音乐播放中本来就不让睡）
@@ -1154,7 +1201,12 @@
                             ? 20000 + Math.random() * 20000      // 听歌：20~40 秒
                             : 60000 + Math.random() * 30000);    // 平时：60~90 秒
                     }
-                    if (nowPerf > nextIdleAt) {
+                    const thinkingNow = window.__petThinking ? window.__petThinking() : false;
+                    if (nowPerf > nextIdleAt && thinkingNow) {
+                        // DSH 正在深度求索：这一轮什么待机动作都不做，等它想完再说
+                        lastCursorAt = nowPerf;
+                        nextIdleAt = 0;
+                    } else if (nowPerf > nextIdleAt) {
                         lastCursorAt = nowPerf;
                         nextIdleAt = 0;
                         if (listening) {
@@ -1239,8 +1291,17 @@
                 headGroup.rotation.z = nodTilt;   // 眼斑/眼球/背鳍跟着头一起转
                 model.rotation.x = pitch * (Math.sin(t * w + 0.8) + 0.4 * Math.sin(t * w * 2 + 0.3)) + SWIM.pitch + FACE.pitch + idleSpin;
 
+                // —— 想到结果时的上浮（1.5 秒上去再回来，慢一点才像在水里） ——
+                const nowMs = performance.now();
+                let hopY = 0, celebK = 0;
+                if (nowMs < celebrateUntil) {
+                    const ck = (nowMs - celebrateAt) / 1500;
+                    if (ck >= 0 && ck <= 1) hopY = Math.sin(Math.PI * ck) * 0.10;
+                    celebK = 1;
+                }
+
                 // —— 漂浮 + 呼吸 + 节拍弹跳（音乐小幅上浮） ——
-                model.position.y = Math.sin(t * moodState.floatSpeed) * moodState.floatAmp * (1 + 0.3 * boost) * (isSleeping ? 0.5 : 1);
+                model.position.y = Math.sin(t * moodState.floatSpeed) * moodState.floatAmp * (1 + 0.3 * boost) * (isSleeping ? 0.5 : 1) + hopY;
                 const s = 1 + Math.sin(t * moodState.floatSpeed * 1.6) * moodState.breath;
                 model.scale.set(s, s, s);
                 // 朝向鼠标的俯仰放在父分组上：镜像（scale.x 为负）之后再做旋转，
@@ -1269,7 +1330,7 @@
                 SWIM.swim += (SWIM.targetSwim - SWIM.swim) * Math.min(1, swimK);
                 // 留 12% 的底：静止时不是完全不动，而是很轻的一点点浮动；
                 // 游起来再推到 100%。完全静止会显得像模型卡住了。
-                const swingPart = (swRaw >= 0 ? swRaw * amp * 0.50 : swRaw * amp * 1.50) * (0.12 + 0.88 * SWIM.swim);
+                const swingPart = (swRaw >= 0 ? swRaw * amp * 0.50 : swRaw * amp * 1.50) * (0.12 + 0.88 * SWIM.swim) * (1 + 0.8 * celebK);
                 const bendA = swingPart - 0.300;   // 偏置不乘：静止时保持那条下垂的静态姿态
                 applyTailBend(bendA);
                 tailGroup.rotation.z = TAIL_BASE_Z + bendA;
@@ -1277,7 +1338,7 @@
 
                 // —— 胸鳍：划水 + 节拍扑腾 ——
                 const pf = moodState.pecFlap * aMul * sleepF;
-                const pecVal = pf * (Math.sin(t * w + 0.6) + 0.5 * Math.sin(t * w * 2 + 1.8));
+                const pecVal = pf * (Math.sin(t * w + 0.6) + 0.5 * Math.sin(t * w * 2 + 1.8)) * (1 + 1.3 * celebK);
                 for (const piv of pecFins) {
                     piv.rotation.x = pecVal;
                     // 身体网格在点头时是逐段弯的，胸鳍是独立 mesh，必须按「根部所在的 u」
@@ -1297,7 +1358,7 @@
                 const petting = (window.__petPetting || 0) > performance.now();
                 if (isSleeping) {
                     for (const piv of eyePivots) { piv.scale.y = 0.10; piv.scale.x = 1; piv.rotation.z = 0; }
-                } else if (petting) {
+                } else if (petting || celebK > 0) {
                     // 眯起来、横向拉宽一点、再向上歪一点 —— 一条上扬的弧，像在笑
                     for (const piv of eyePivots) {
                         piv.scale.y = 0.30;
@@ -1586,8 +1647,10 @@
             function scheduleIdleChat() {
                 clearTimeout(idleChatTimer);
                 idleChatTimer = setTimeout(function () {
-                    // 正在说别的话（比如流式回复）就不插嘴
-                    if (!bubble.classList.contains('show') && !window.__petIsSleeping && !window.__petGameMode) {
+                    // 正在说别的话（比如流式回复）就不插嘴；
+                    // DSH 正在深度求索时也不说——那会儿头上正冒着省略号，插嘴很出戏
+                    const thinking = window.__petThinking ? window.__petThinking() : false;
+                    if (!thinking && !bubble.classList.contains('show') && !window.__petIsSleeping && !window.__petGameMode) {
                         show(pickIdleLine(), 5200);
                     }
                     scheduleIdleChat();
@@ -1595,12 +1658,13 @@
             }
             scheduleIdleChat();
             // ===== 手势：按住拖动窗口，位移 < 6px 视为单击 =====
-            const drag = { down: false, sx: 0, sy: 0, moved: false };
+            const drag = { down: false, sx: 0, sy: 0, moved: false, lastSentAt: 0 };
             const rclick = { down: false, sx: 0, sy: 0, moved: false };
             window.addEventListener('mousedown', function (e) {
                 if (e.button === 0) {
                     drag.down = true; drag.sx = e.screenX; drag.sy = e.screenY; drag.moved = false;
-                    if (window.petWindow) window.petWindow.dragStart(); // 主进程缓存 getBounds 并锁尺寸
+                    window.__petDragging = true;   // 拖动期间冻结朝向，别让身体跟着手抖
+        if (window.petWindow) window.petWindow.dragStart(); // 主进程缓存 getBounds 并锁尺寸
                 } else if (e.button === 2) {
                     rclick.down = true; rclick.sx = e.clientX; rclick.sy = e.clientY; rclick.moved = false;
                     // 让窗口立刻站住：漫游时它一直在游，右键按下和松开之间会挪开
@@ -1611,7 +1675,12 @@
                 if (drag.down) {
                     const dx = e.screenX - drag.sx, dy = e.screenY - drag.sy; // 相对起点的总位移
                     if (!drag.moved && Math.abs(dx) + Math.abs(dy) > 6) drag.moved = true;
-                    if (drag.moved && window.petWindow) window.petWindow.dragMove(dx, dy);
+                    // 节流到约 60Hz：高刷屏上每个 mousemove 都挪窗口，看起来像在抖
+                    const nowDrag = performance.now();
+                    if (drag.moved && window.petWindow && nowDrag - drag.lastSentAt > 16) {
+                        drag.lastSentAt = nowDrag;
+                        window.petWindow.dragMove(dx, dy);
+                    }
                 }
                 if (rclick.down) {
                     if (Math.abs(e.clientX - rclick.sx) + Math.abs(e.clientY - rclick.sy) > 6) rclick.moved = true;
@@ -1620,6 +1689,7 @@
             window.addEventListener('mouseup', function (e) {
                 if (drag.down) {
                     drag.down = false;
+                    window.__petDragging = false;
                     if (window.petWindow) window.petWindow.dragEnd(drag.moved);
                     if (!drag.moved) {
                         if (sleeping) {
@@ -1651,6 +1721,7 @@
             window.addEventListener('blur', function () {
                 if (drag.down && drag.moved) {
                     drag.down = false;
+                    window.__petDragging = false;
                     if (window.petWindow) window.petWindow.dragEnd(true);
                 }
                 rclick.down = false;
@@ -1692,6 +1763,24 @@
                         // 吃东西"咕噜"：两下快速下行
                         tone(now, 900, 500, 0.10, 'sine', 0.14);
                         tone(now + 0.09, 700, 350, 0.10, 'sine', 0.14);
+                    } else if (kind === 'eat') {
+                        // 吃到鱼：一声上挑的"啾" + 咕嘟咽下去，跟点击那声一个调性
+                        // 每次微微变调，连着吃不会像复读机
+                        const k = 0.94 + Math.random() * 0.14;
+                        tone(now, 700 * k, 1500 * k, 0.09, 'sine', 0.15);
+                        tone(now + 0.10, 1300 * k, 760 * k, 0.11, 'sine', 0.13);
+                    } else if (kind === 'bulb') {
+                        // 想到结果：一声轻巧的「叮~」，像小铃铛
+                        const k = 0.98 + Math.random() * 0.05;
+                        tone(now, 1046 * k, 1046 * k, 0.10, 'sine', 0.13);
+                        tone(now + 0.10, 1568 * k, 1568 * k, 0.22, 'sine', 0.11);
+                    } else if (kind === 'pet') {
+                        // 摸头：软软的「嗯~」——中高频、圆润、带一点上扬尾巴，
+                        // 跟吃鱼那声尖锐的「啾」明显不同，也不会像低频那样听不见
+                        const k = 0.97 + Math.random() * 0.06;
+                        tone(now, 520 * k, 760 * k, 0.12, 'sine', 0.17);
+                        tone(now + 0.11, 760 * k, 640 * k, 0.18, 'sine', 0.16);
+                        tone(now + 0.27, 640 * k, 880 * k, 0.10, 'sine', 0.13);
                     } else if (kind === 'heart') {
                         // 开心"欢快颤音"：上行三连音
                         tone(now, 800, 1200, 0.08, 'triangle', 0.14);
@@ -1759,6 +1848,8 @@
                 return true;
             };
             window.__petIdleSleep = function (ms) {
+                // DSH 正在深度求索时别睡：头顶还冒着省略号呢
+                if (window.__petThinking && window.__petThinking()) return;
                 // 正在跟着音乐点头就别睡——5 秒内有点过头就算在跳舞
                 if (window.__petLastBeatAt && Date.now() - window.__petLastBeatAt < 5000) return;
                 if (sleeping) return;
@@ -1771,18 +1862,26 @@
                 }
             }, 1000);
             // 吃鱼的反应和「喂食」完全一致：小鱼游进嘴里 + 欢快扑腾 + 好吃！
-            window.__petEatFish = function () {
-                spawnFish();
+            window.__petPlaySound = playSound;   // 别的 <script> 块调它得走 window
+            window.__petEatFish = function (x, y) {
+                spawnFish(x, y);
                 if (window.__petHappy) window.__petHappy();
-                playSound('feed');
+                playSound('eat');
                 show(window.__petGameLine ? (window.__petGameLine('eat') || '好吃！') : '好吃！', 2000);
             };
-            function spawnFish() {
+            function spawnFish(x, y) {
                 const d = document.createElement('div');
                 d.className = 'fish-particle';
                 d.textContent = '🐟';
-                d.style.left = '18%';
-                d.style.top = '42%';
+                if (typeof x === 'number' && typeof y === 'number') {
+                    // 游戏里吃到的鱼：贴在它真正被吃掉的位置（嘴那儿）
+                    d.style.left = Math.round(x) + 'px';
+                    d.style.top = Math.round(y) + 'px';
+                } else {
+                    // 菜单喂食：从左边游进嘴里
+                    d.style.left = '18%';
+                    d.style.top = '42%';
+                }
                 d.style.fontSize = '20px';
                 document.body.appendChild(d);
                 d.addEventListener('animationend', function () { d.remove(); });
@@ -1860,7 +1959,7 @@
                         'setSpinning', 'setSleeping', 'onCursor', 'reportHit',
                     ],
                     petBridge: [
-                        'onMood', 'onConnection', 'onAbortSpin', 'onSwim',
+                        'onMood', 'onThinking', 'onConnection', 'onAbortSpin', 'onSwim',
                         'onLog', 'onReply', 'onBalance', 'queryBalance',
                         'onStream', 'prompt',
                         'onSetSkin', 'onSetCustomSkin', 'onSetSize', 'onSetDanceFreq',
@@ -1914,6 +2013,79 @@
                 window.Pet.setMood(mood);
                 beep(mood);
             });
+
+            // ---- 深度求索：头顶冒 . / .. / ... 一直到 ...... 循环；想完闪灯泡 + 开心一下 ----
+            (function initThinking() {
+                const think = document.createElement('div');
+                think.className = 'pet-think';
+                const bulb = document.createElement('div');
+                bulb.className = 'pet-bulb';
+                bulb.textContent = '💡';
+                document.body.appendChild(think);
+                document.body.appendChild(bulb);
+
+                let dots = 0, dotTimer = null, posTimer = null, bulbTimer = null, active = false, activeSince = 0;
+
+                function place() {
+                    const head = window.__petProjectHead ? window.__petProjectHead() : null;
+                    if (!head) return;
+                    const gap = Math.max(10, Math.round(window.innerHeight * 0.03));
+                    const y = Math.round(head.y - gap);
+                    // 字号跟着窗口（体型）走，不然大体型下省略号和灯泡小得看不见
+                    const kf = Math.max(0.6, Math.min(3.2, window.innerHeight / 400));
+                    think.style.fontSize = (26 * kf).toFixed(1) + 'px';
+                    think.style.letterSpacing = (3 * kf).toFixed(1) + 'px';
+                    bulb.style.fontSize = (30 * kf).toFixed(1) + 'px';
+                    think.style.left = Math.round(head.x) + 'px';
+                    think.style.top = y + 'px';
+                    bulb.style.left = Math.round(head.x) + 'px';
+                    bulb.style.top = y + 'px';
+                }
+
+                window.__petSetThinking = function (on) {
+                    on = !!on;
+                    if (on === active) return;
+                    active = on;
+                    if (on) {
+                        activeSince = performance.now();
+                        // DSH 开始深度求索：如果它正睡着，立刻叫醒——
+                        // 闭着眼冒省略号很怪，而且思考期间本来就不该睡
+                        if (window.__petWake) window.__petWake();
+                        // 开始想：省略号从 1 个点长到 6 个，然后重来
+                        dots = 1;
+                        think.textContent = '.';
+                        think.classList.add('on');
+                        bulb.classList.remove('on');
+                        clearInterval(dotTimer);
+                        dotTimer = setInterval(function () {
+                            dots = (dots % 6) + 1;
+                            think.textContent = '.'.repeat(dots);
+                        }, 420);
+                        clearInterval(posTimer);
+                        place();
+                        posTimer = setInterval(place, 250);
+                    } else {
+                        // 想完了：收起省略号，闪灯泡 + 让 3D 那边开心一下
+                        clearInterval(dotTimer); dotTimer = null;
+                        clearInterval(posTimer); posTimer = null;
+                        think.classList.remove('on');
+                        if (window.__petCelebrate) window.__petCelebrate();
+                        place();
+                        bulb.classList.remove('on');
+                        void bulb.offsetWidth;   // 重启动画
+                        // 只闪了不到 0.7 秒的不算「想到结果」，多半是状态抖了一下
+                        if (performance.now() - activeSince > 700) {
+                            bulb.classList.add('on');
+                            if (window.__petPlaySound) window.__petPlaySound('bulb');
+                        }
+                        clearTimeout(bulbTimer);
+                        bulbTimer = setTimeout(function () { bulb.classList.remove('on'); }, 3000);
+                    }
+                };
+                window.__petThinking = function () { return active; };
+            })();
+
+            if (bridge.onThinking) bridge.onThinking(function (on) { window.__petSetThinking(on); });
             window.__petLogs = [];
             if (bridge.onLog) bridge.onLog((data) => { window.__petLogs.push(data); });
                         bridge.onConnection((info) => {
@@ -2013,6 +2185,7 @@
                                         lastPetAt = now;
                                         headStrokeAt = [];
                                         window.__petPetting = now + 1600;
+                                        if (window.__petPlaySound) window.__petPlaySound('pet');
                                         if (window.__petHearts) window.__petHearts(true);
                                         if (window.Pet && window.Pet.say) {
                                             const petLine = window.__petGameMode && window.__petGameLine
@@ -2050,6 +2223,8 @@
                 bridge.onSwim((v) => {
                     const s = window.__petSwim;
                     if (!s || !v) return;
+                    // 手上正拖着它：这期间不要被光标带着转，身体会来回摆
+                    if (window.__petDragging) return;
                     const vx = Math.max(-1, Math.min(1, Number(v.vx) || 0));
                     const vy = Math.max(-1, Math.min(1, Number(v.vy) || 0));
                     // 头和身子都在朝光标偏了，横向侧倾就收一点，别两边打架
@@ -2061,13 +2236,9 @@
 
                     // 漫游（roam）消息不算"鼠标动了"：手确实没动，所以待机翻滚的
                     // 计时继续走 —— 它游着游着翻个身，挺像活的。
-                    if (!v.roam) {
-                        lastCursorAt = performance.now();
-                        // 正在转圈时不硬停，改成加速把这一圈转完，不然会看到它「啪」地弹回去
-                        spinQueue = [];   // 被打断就不再接着做第二个
-                        if (idleSpinning) idleSpinFast = true;
-                        if (idleYawSpinning) idleYawFast = true;
-                    }
+                    // 只记一个时间戳，具体怎么处理交给 3D 那段（变量在它作用域里，
+                    // 这边直接读写会抛 ReferenceError，把后面整段朝向代码打断）
+                    if (!v.roam) window.__petCursorActiveAt = performance.now();
                     const f = window.__petFace;
                     if (!f || typeof v.cx !== 'number' || typeof v.cy !== 'number') return;
                     const dx = v.cx, dy = v.cy;
@@ -2264,8 +2435,8 @@
             // ⚠️ 这个挂在 petWindow 上（不是 petBridge）。两个对象名字很像，
             // 接错了不会报错、只是回调永远不触发 —— 吃鱼没反应就是这么来的。
             if (window.petWindow && window.petWindow.onFishEaten) {
-                window.petWindow.onFishEaten(function () {
-                    if (window.__petEatFish) window.__petEatFish();
+                window.petWindow.onFishEaten(function (data) {
+                    if (window.__petEatFish) window.__petEatFish(data && data.x, data && data.y);
                 });
             }
 
