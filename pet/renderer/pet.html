@@ -1248,10 +1248,11 @@
                 // 悬停/单击的 boost；音乐不再放大游动，只做小幅叠加偏移（参考 F:\works）
                 const boost = Math.max(hoverActive ? 0.25 : 0, clickBoost);
                 const sleepF = isSleeping ? 0.2 : 1; // 睡眠时动作减幅
-                // 只放大「幅度」，不再加快「频率」：
-                // 之前 boost 会把游动频率也乘上去，点击/悬停时整只鲸鱼像通了电一样抖
-                const fMul = 1 + 0.08 * boost;
-                const aMul = 1 + 0.45 * boost;
+                // 频率固定死：悬停和点击一律不再影响摆动速度。
+                // 光标停在身上/反复点击时频率会变，看起来就像「越点越快」，
+                // 现在 boost 只放大幅度，节奏永远一样。
+                const fMul = 1;
+                const aMul = 1 + 0.35 * boost;
                 const w = BASE_SWIM_HZ * fMul * Math.PI * 2;
 
                 // 转圈：节拍触发，偶尔整圈旋转
