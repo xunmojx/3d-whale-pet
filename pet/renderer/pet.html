@@ -1753,7 +1753,7 @@
                                 ? window.__petGameLine('click')
                                 : window.__petPickLineFrom('click', LINES);
                             if (window.__petClickReact) window.__petClickReact();
-                            if (clickLine) show(clickLine, 3000);
+                            if (clickLine && !(window.__petDshBusy && window.__petDshBusy())) show(clickLine, 3000);
                             window.Pet.emit('click');
                             showActionBubbles();
                         }
@@ -1974,17 +1974,18 @@
                 const act = btn.dataset.action;
                 // 点完按钮不再自动收起面板：可以连着喂一条、摸一下、再让它睡
                 // 收起交给「点鲸鱼以外的地方」
+                const busyNow = window.__petDshBusy ? window.__petDshBusy() : false;
                 if (act === 'sleep') {
                     setSleeping(!sleeping);
                     playSound(sleeping ? 'sleep' : 'wake');
-                    show(sleeping ? '晚安，我睡啦~' : '醒啦~', 2000);
+                    if (!busyNow) show(sleeping ? '晚安，我睡啦~' : '醒啦~', 2000);
                 } else if (act === 'feed') {
                     window.__petEatFish();
                 } else if (act === 'pet') {
                     spawnHearts();
                     if (window.__petHappy) window.__petHappy();
                     playSound('heart');
-                    show('嘿嘿~', 2000);
+                    if (!busyNow) show('嘿嘿~', 2000);
                 }
             });
 
@@ -2249,9 +2250,10 @@
                                         if (window.__petPlaySound) window.__petPlaySound('pet');
                                         if (window.__petHearts) window.__petHearts(true);
                                         if (window.Pet && window.Pet.say) {
-                                            const petLine = window.__petGameMode && window.__petGameLine
-                                                ? window.__petGameLine('pet')
-                                                : window.__petPickLineFrom('pet', PET_LINES);
+                                            const petLine = (window.__petDshBusy && window.__petDshBusy()) ? ''
+                                                : (window.__petGameMode && window.__petGameLine
+                                                    ? window.__petGameLine('pet')
+                                                    : window.__petPickLineFrom('pet', PET_LINES));
                                             if (petLine) window.Pet.say(petLine, 2600);
                                         }
                                     }
@@ -2412,6 +2414,10 @@
                     }
                 });
             }
+            // DSH 正在跑任务（深度求索 / 干活）：互动只给动作和音效，不说话的台词
+            window.__petDshBusy = function () {
+                try { return !!(window.__petThinking && window.__petThinking()); } catch (e) { return false; }
+            };
             // ---- 单击互动：说话 + 弹出派活输入框 ----
             let input = null;
             let streamBuf = ''; // 派活后的流式回复缓冲（P3）
