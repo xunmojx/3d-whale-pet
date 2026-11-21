@@ -105,6 +105,10 @@ contextBridge.exposeInMainWorld('petBridge', {
   onMood(cb) {
     ipcRenderer.on('pet:mood', (_e, mood) => cb(mood))
   },
+  // 深度求索（思考）状态：true = 正在想，false = 想完了
+  onThinking(cb) {
+    ipcRenderer.on('pet:thinking', (_e, on) => cb(!!on))
+  },
   // 连接状态
   onConnection(cb) {
     ipcRenderer.on('pet:connection', (_e, info) => cb(info))
