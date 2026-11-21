@@ -504,8 +504,9 @@ function updateClickThrough(rel) {
   const inBody = hitFromRenderer === null
     ? (rel.cx / FOLLOW.hitRx) ** 2 + (rel.cy / FOLLOW.hitRy) ** 2 <= 1
     : hitFromRenderer
-  const inPanel = panelOpen && rel.cx >= -winW() / 2 && rel.cx <= -winW() / 2 + 92
-                       && rel.cy >= -130 && rel.cy <= 130
+  // 面板打开时整个窗口都接鼠标：这样「点鲸鱼以外的空白处」才收得到点击，
+  // 用来收起面板（窗口本身只有 420×400，挡住的地方很有限）
+  const inPanel = panelOpen
   const inside = inBody || inPanel
   const ignore = !inside
   if (ignore === clickThrough) return
@@ -613,7 +614,49 @@ function faceChanged(rel) {
 // 渲染层开始/结束翻滚时通知；翻滚期间窗口停住。
 ipcMain.on('pet:spinning', (_e, v) => { rendererSpinning = !!v })
 ipcMain.on('pet:sleeping', (_e, v) => { rendererSleeping = !!v })
-ipcMain.on('pet:panel', (_e, v) => { panelOpen = !!v })
+ipcMain.on('pet:panel', (_e, v) => {
+  panelOpen = !!v
+  if (panelOpen) openCatcher()
+  else closeCatcher()
+})
+
+/**
+ * 全屏点击捕手。
+ * 桌宠窗口只有 420×400，用户点到窗口外面（别的程序上）时桌宠收不到事件，
+ * 所以面板打开期间铺一层透明全屏窗口：层级比桌宠低，鲸鱼和按钮照样能点，
+ * 其余地方的点击落到这层上，用来收起面板。
+ */
+let catcherWin = null
+function openCatcher() {
+  if (catcherWin && !catcherWin.isDestroyed()) return
+  if (!win || win.isDestroyed()) return
+  const wa = screen.getPrimaryDisplay().workArea
+  catcherWin = new BrowserWindow({
+    x: wa.x, y: wa.y, width: wa.width, height: wa.height,
+    transparent: true, frame: false, resizable: false, movable: false,
+    skipTaskbar: true, hasShadow: false, show: false, focusable: false,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+  })
+  catcherWin.loadFile(path.join(__dirname, 'renderer', 'catcher.html'))
+  catcherWin.once('ready-to-show', () => {
+    try {
+      catcherWin.setAlwaysOnTop(true, 'pop-up-menu')   // 低于桌宠的 screen-saver
+      catcherWin.showInactive()
+    } catch { /* 忽略 */ }
+  })
+  catcherWin.on('closed', () => { catcherWin = null })
+}
+function closeCatcher() {
+  if (!catcherWin || catcherWin.isDestroyed()) { catcherWin = null; return }
+  const w = catcherWin
+  catcherWin = null
+  try { w.destroy() } catch { /* 已关 */ }
+}
+ipcMain.on('catcher-hit', () => {
+  closeCatcher()
+  panelOpen = false
+  sendToWin('pet:panel-close', null)
+})
 ipcMain.on('pet:hit', (_e, v) => { hitFromRenderer = !!v })
 // 渲染层收到任何一次点击 => 主动收起菜单（点模型上或者窗口内都算"外面"）
 
