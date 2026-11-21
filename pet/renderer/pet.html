@@ -1041,7 +1041,27 @@
             let lastCursorAt = performance.now();
             let idleSpinning = false;
             let idleSpin = 0;
-            const IDLE_SPIN_AFTER = 150000;   // 2.5 分钟没动静
+            let idleSpinFast = false;   // 被鼠标打断时不是硬停，而是加速把这一圈转完
+            let spinQueue = [];         // 排队的后续动作：'roll'（横轴翻滚）| 'yaw'（竖轴转圈）
+            // 启动一个待机动作；两种动作共用同一套队列，所以可以「先翻后转」或「先转后翻」
+            function startIdleSpin(type) {
+                idleSpin = 0; idleYawSpin = 0;
+                idleSpinFast = false; idleYawFast = false;
+                idleSpinning = (type === 'roll');
+                idleYawSpinning = (type === 'yaw');
+                if (window.petWindow && window.petWindow.setSpinning) window.petWindow.setSpinning(true);
+            }
+            function finishIdleSpin() {
+                if (spinQueue.length) { startIdleSpin(spinQueue.shift()); return; }
+                idleSpinning = false; idleYawSpinning = false;
+                lastCursorAt = performance.now();
+                if (window.petWindow && window.petWindow.setSpinning) window.petWindow.setSpinning(false);
+            }
+            // 听歌时还有一种是「横向转圈」：绕竖轴转 360°，跟原来的横向翻滚各 50%
+            let idleYawSpinning = false;
+            let idleYawSpin = 0;
+            let idleYawFast = false;
+            let nextIdleAt = 0;   // 下一次「自己动一下」的时刻，按是否在听歌取不同区间
 
             const FACE = {
                 // 3D 朝向：绕竖轴转头（yaw）、绕横轴点头（pitch）、平面内指向箭头（tilt）
@@ -1106,22 +1126,50 @@
                 // 待机转圈：鼠标 2.5 分钟没动就绕竖轴转一圈，转完重新计时
                 // 待机翻滚：头先向上仰、翻到身后、再从下面转回来。绕的是横轴（pitch 轴）。
                 if (idleSpinning) {
-                    idleSpin += dt * 2.0;
+                    // 正常 2.0 rad/s（约 3.1 秒转一圈）；被鼠标打断后 11 rad/s 收尾，
+                    // 半秒内转完。直接归零会让模型「啪」地弹回原位，很突兀。
+                    idleSpin += dt * (idleSpinFast ? 11 : 2.0);
                     if (idleSpin >= Math.PI * 2) {
-                        idleSpin = 0; idleSpinning = false; lastCursorAt = performance.now();
-                        if (window.petWindow && window.petWindow.setSpinning) window.petWindow.setSpinning(false);
+                        idleSpin = 0; idleSpinFast = false;
+                        finishIdleSpin();
+                    }
+                } else if (idleYawSpinning) {
+                    // 横向转圈：2.4 rad/s 约 2.6 秒一圈，被打断就用更快的速度收尾
+                    idleYawSpin += dt * (idleYawFast ? 11 : 2.4);
+                    if (idleYawSpin >= Math.PI * 2) {
+                        idleYawSpin = 0; idleYawFast = false;
+                        finishIdleSpin();
                     }
                 } else if (window.__petIsSleeping) {
                     // 睡着的时候不算「待机计时」，醒了重新数
                     lastCursorAt = performance.now();
-                } else if (performance.now() - lastCursorAt > IDLE_SPIN_AFTER) {
-                    // 待机到一个点了：翻滚和睡觉二选一，绝不同时来
-                    lastCursorAt = performance.now();
-                    if (Math.random() < 0.5) {
-                        idleSpinning = true; idleSpin = 0;
-                        if (window.petWindow && window.petWindow.setSpinning) window.petWindow.setSpinning(true);
-                    } else if (window.__petIdleSleep) {
-                        window.__petIdleSleep(30000 + Math.random() * 30000);
+                } else {
+                    const nowPerf = performance.now();
+                    // 人还在动鼠标就不算待机：把排好的那次取消掉
+                    if (nowPerf - lastCursorAt < 1500) nextIdleAt = 0;
+                    // 在听歌：30~60 秒动一次，而且只转圈（音乐播放中本来就不让睡）
+                    const listening = window.__petLastBeatAt && (Date.now() - window.__petLastBeatAt) < 3000;
+                    if (!nextIdleAt) {
+                        nextIdleAt = nowPerf + (listening
+                            ? 20000 + Math.random() * 20000      // 听歌：20~40 秒
+                            : 60000 + Math.random() * 30000);    // 平时：60~90 秒
+                    }
+                    if (nowPerf > nextIdleAt) {
+                        lastCursorAt = nowPerf;
+                        nextIdleAt = 0;
+                        if (listening) {
+                            const pick = () => (Math.random() < 0.5 ? 'roll' : 'yaw');
+                            // 一半概率连做第二个动作，类型独立随机，所以会出现
+                            // 翻→翻 / 转→转 / 翻→转 / 转→翻 四种组合
+                            spinQueue = Math.random() < 0.5 ? [pick()] : [];
+                            startIdleSpin(pick());
+                        } else if (Math.random() < 0.5) {
+                            // 没在听歌：转圈和打盹二选一，绝不同时来
+                            idleSpinning = true; idleSpin = 0; idleSpinFast = false;
+                            if (window.petWindow && window.petWindow.setSpinning) window.petWindow.setSpinning(true);
+                        } else if (window.__petIdleSleep) {
+                            window.__petIdleSleep(30000 + Math.random() * 30000);
+                        }
                     }
                 }
                 // 转身：0° → 180° 一路转过去，不回头、不镜像。因为模型正反两面都有
@@ -1172,7 +1220,7 @@
                 // 平着转过去是 2D 的，加上这一下就像绕着自己的竖轴拧了一下再摆正 ——
                 // 误差归零它自然回 0，不需要额外的状态机。
                 const swingYaw = Math.max(-0.28, Math.min(0.28, (FACE.tiltTarget - FACE.tilt) * 0.22));
-                model.rotation.y = yaw * (Math.sin(t * w + 0.5) + 0.4 * Math.sin(t * w * 2 + 2.4)) + spinAngle + FACE.yaw + turnYaw + swingYaw;
+                model.rotation.y = yaw * (Math.sin(t * w + 0.5) + 0.4 * Math.sin(t * w * 2 + 2.4)) + spinAngle + idleYawSpin + FACE.yaw + turnYaw + swingYaw;
                 const pitch = moodState.bodyPitch * aMul * sleepF;
                 // 点头曲线：一次 0 -> 1 -> 0，只在有节拍时才走
                 if (nodPhase > 0) {
@@ -1891,7 +1939,10 @@
             if (window.petWindow && window.petWindow.onCursor) {
                 let lastHit = null;
                 let lastScreenX = null;
-                let wigSign = 0, wigCount = 0, wigSince = 0, lastPetAt = 0;
+                let lastPetAt = 0;
+            // 头部「快速划动」的状态：headStrokeAt 存每次换向的时刻，
+            // 1.6 秒内攒够 3 次才认；headWigSign 记录上一次的划动方向。
+            let headWigSign = 0, headAccum = 0, headStrokeAt = [], lastScreenAt = 0;
 
                 // 光标坐标还用来判断「人已经走开了」：不在窗口里超过 1.2 秒就把面板收掉
                 setInterval(function () {
@@ -1929,54 +1980,68 @@
                         if (window.petWindow.reportHit) window.petWindow.reportHit(hit);
                     }
 
-                    // 摸摸：在它身上左右来回甩。用屏幕坐标算方向和幅度，
-                    // 这样它自己游动不会干扰（窗口内相对坐标会被带动）。
+                    // 摸摸：要在「脑袋上」快速来回划三下才算。
+                    // 之前只要在身体上甩够次数就触发，所以随便蹭两下就冒爱心。
                     if (sx !== null && hit) {
-                        const d = lastScreenX === null ? 0 : sx - lastScreenX;
-                        if (Math.abs(d) > 18) {
+                        const head = window.__petProjectHead ? window.__petProjectHead() : null;
+                        const m = window.__petMeasureModel ? window.__petMeasureModel() : null;
+                        const modelPx = (m && m.modelPx) || 100;
+                        // 头部区域放宽到「头顶往下 60%」：连脖子一起算，蹭下缘也不会判不中
+                        const inHead = head && p.y >= head.y - 14 && p.y <= head.y + modelPx * 0.6;
+
+                        if (inHead) {
                             const now = performance.now();
-                            if (now - wigSince > 3000) { wigCount = 0; wigSince = now; }
-                            const sign = d > 0 ? 1 : -1;
-                            if (sign !== wigSign) {
-                                wigSign = sign;
-                                wigCount++;
-                                if (wigCount >= 3 && now - lastPetAt > 3000) {
-                                    lastPetAt = now;
-                                    wigCount = 0;
-                                    wigSince = now;
-                                    window.__petPetting = now + 1600;
-                                    if (window.__petHearts) window.__petHearts(true);
-                                    if (window.Pet && window.Pet.say) {
-                                        const petLine = window.__petGameMode && window.__petGameLine
-                                            ? window.__petGameLine('pet')
-                                            : PET_LINES[Math.floor(Math.random() * PET_LINES.length)];
-                                        window.Pet.say(petLine, 2600);
+                            const dtMove = lastScreenAt ? now - lastScreenAt : 16;
+                            const d = lastScreenX === null ? 0 : sx - lastScreenX;
+                            const ad = Math.abs(d);
+                            const speed = dtMove > 0 ? ad / dtMove : 0;   // px/ms
+
+                            // 判得太严会「怎么摸都不理」：单次位移很小、要凑够换向次数。
+                            // 现在只要在同一方向上累计走够 30px 就算一次划动，三下就到。
+                            if (ad > 0.5 && speed > 0.03) {
+                                const sign = d > 0 ? 1 : -1;
+                                if (sign !== headWigSign) {
+                                    headWigSign = sign;
+                                    headAccum = 0;
+                                }
+                                headAccum += ad;
+                                if (headAccum >= 30) {
+                                    headAccum = 0;
+                                    headStrokeAt.push(now);
+                                    headStrokeAt = headStrokeAt.filter((ts) => now - ts < 2500);
+                                    if (headStrokeAt.length >= 3 && now - lastPetAt > 4000) {
+                                        lastPetAt = now;
+                                        headStrokeAt = [];
+                                        window.__petPetting = now + 1600;
+                                        if (window.__petHearts) window.__petHearts(true);
+                                        if (window.Pet && window.Pet.say) {
+                                            const petLine = window.__petGameMode && window.__petGameLine
+                                                ? window.__petGameLine('pet')
+                                                : PET_LINES[Math.floor(Math.random() * PET_LINES.length)];
+                                            window.Pet.say(petLine, 2600);
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                    if (sx !== null) lastScreenX = sx;
+                    if (sx !== null) { lastScreenX = sx; lastScreenAt = performance.now(); }
                 });
             }
 
             // ---- 主进程要求中断翻滚（挡住东西了，让开优先） ----
+            // 被要求让位时也走「加速收尾」，不直接归零，免得模型啪地弹回去
             if (bridge.onAbortSpin) {
                 bridge.onAbortSpin(() => {
-                    idleSpinning = false;
-                    idleSpin = 0;
                     lastCursorAt = performance.now();
-                    if (window.petWindow && window.petWindow.setSpinning) window.petWindow.setSpinning(false);
-                });
-            }
-
-            // ---- 主进程要求中断翻滚（挡住东西了，让开优先） ----
-            if (bridge.onAbortSpin) {
-                bridge.onAbortSpin(() => {
-                    idleSpinning = false;
-                    idleSpin = 0;
-                    lastCursorAt = performance.now();
-                    if (window.petWindow && window.petWindow.setSpinning) window.petWindow.setSpinning(false);
+                    spinQueue = [];
+                    if (idleSpinning) {
+                        idleSpinFast = true;
+                    } else if (idleYawSpinning) {
+                        idleYawFast = true;
+                    } else if (window.petWindow && window.petWindow.setSpinning) {
+                        window.petWindow.setSpinning(false);
+                    }
                 });
             }
 
@@ -1998,8 +2063,10 @@
                     // 计时继续走 —— 它游着游着翻个身，挺像活的。
                     if (!v.roam) {
                         lastCursorAt = performance.now();
-                        idleSpinning = false;
-                        idleSpin = 0;
+                        // 正在转圈时不硬停，改成加速把这一圈转完，不然会看到它「啪」地弹回去
+                        spinQueue = [];   // 被打断就不再接着做第二个
+                        if (idleSpinning) idleSpinFast = true;
+                        if (idleYawSpinning) idleYawFast = true;
                     }
                     const f = window.__petFace;
                     if (!f || typeof v.cx !== 'number' || typeof v.cy !== 'number') return;
