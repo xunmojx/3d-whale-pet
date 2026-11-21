@@ -1248,7 +1248,9 @@
                 // 悬停/单击的 boost；音乐不再放大游动，只做小幅叠加偏移（参考 F:\works）
                 const boost = Math.max(hoverActive ? 0.25 : 0, clickBoost);
                 const sleepF = isSleeping ? 0.2 : 1; // 睡眠时动作减幅
-                const fMul = 1 + 0.4 * boost;
+                // 只放大「幅度」，不再加快「频率」：
+                // 之前 boost 会把游动频率也乘上去，点击/悬停时整只鲸鱼像通了电一样抖
+                const fMul = 1 + 0.08 * boost;
                 const aMul = 1 + 0.45 * boost;
                 const w = BASE_SWIM_HZ * fMul * Math.PI * 2;
 
@@ -1663,8 +1665,7 @@
             window.addEventListener('mousedown', function (e) {
                 if (e.button === 0) {
                     drag.down = true; drag.sx = e.screenX; drag.sy = e.screenY; drag.moved = false;
-                    window.__petDragging = true;   // 拖动期间冻结朝向，别让身体跟着手抖
-        if (window.petWindow) window.petWindow.dragStart(); // 主进程缓存 getBounds 并锁尺寸
+                    if (window.petWindow) window.petWindow.dragStart(); // 主进程缓存 getBounds 并锁尺寸
                 } else if (e.button === 2) {
                     rclick.down = true; rclick.sx = e.clientX; rclick.sy = e.clientY; rclick.moved = false;
                     // 让窗口立刻站住：漫游时它一直在游，右键按下和松开之间会挪开
@@ -1674,13 +1675,13 @@
             window.addEventListener('mousemove', function (e) {
                 if (drag.down) {
                     const dx = e.screenX - drag.sx, dy = e.screenY - drag.sy; // 相对起点的总位移
-                    if (!drag.moved && Math.abs(dx) + Math.abs(dy) > 6) drag.moved = true;
-                    // 节流到约 60Hz：高刷屏上每个 mousemove 都挪窗口，看起来像在抖
-                    const nowDrag = performance.now();
-                    if (drag.moved && window.petWindow && nowDrag - drag.lastSentAt > 16) {
-                        drag.lastSentAt = nowDrag;
-                        window.petWindow.dragMove(dx, dy);
+                    if (!drag.moved && Math.abs(dx) + Math.abs(dy) > 6) {
+                        drag.moved = true;
+                        window.__petDragging = true;   // 真开始拖了才冻结朝向
                     }
+                    // 不做节流：窗口位置直接跟手最顺；之前按 16ms 节流，
+                    // 在高刷屏上反而变成一跳一跳的。
+                    if (drag.moved && window.petWindow) window.petWindow.dragMove(dx, dy);
                 }
                 if (rclick.down) {
                     if (Math.abs(e.clientX - rclick.sx) + Math.abs(e.clientY - rclick.sy) > 6) rclick.moved = true;
@@ -2117,11 +2118,19 @@
             let headWigSign = 0, headAccum = 0, headStrokeAt = [], lastScreenAt = 0;
 
                 // 光标坐标还用来判断「人已经走开了」：不在窗口里超过 1.2 秒就把面板收掉
+                // 在窗口里点到面板以外的地方，立刻收起（穿透区域收不到点击，
+                // 那条路靠下面的「光标离开」兜底）
+                document.addEventListener('mousedown', function (e) {
+                    const panel = document.getElementById('action-bubbles');
+                    if (!panel || !panel.classList.contains('open')) return;
+                    if (panel.contains(e.target)) return;
+                    if (window.__petHidePanel) window.__petHidePanel();
+                }, true);
                 setInterval(function () {
                     const c = window.__petLastCursor;
                     if (!c) return;
                     const outside = c.x < 0 || c.x > window.innerWidth || c.y < 0 || c.y > window.innerHeight;
-                    if (outside && performance.now() - c.at > 1200) {
+                    if (outside && performance.now() - c.at > 700) {
                         if (window.__petHidePanel) window.__petHidePanel();
                         window.__petLastCursor = null;
                     }
