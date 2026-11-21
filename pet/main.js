@@ -296,7 +296,7 @@ function loadConfig() {
     const next = { click: [], idle: [], pet: [], game: [] }
     for (const cat of Object.keys(next)) {
       const arr = savedCfg.customLines[cat]
-      if (Array.isArray(arr)) next[cat] = arr.map(String).filter(Boolean)
+      if (Array.isArray(arr)) next[cat] = normalizeCustom(arr)
     }
     customLines = next
   }
@@ -1102,11 +1102,22 @@ const DEFAULT_LINES = {
 let lineOff = []            // 被关掉的内置台词，形如 'click:2'
 let customLines = { click: [], idle: [], pet: [], game: [] }
 
+// 自定义台词存成 { text, on }：用户可以留着一批，只把想用的打开
+function normalizeCustom(arr) {
+  if (!Array.isArray(arr)) return []
+  return arr.map((it) => {
+    if (typeof it === 'string') return { text: it, on: true }          // 老格式兼容
+    if (it && typeof it === 'object') return { text: String(it.text || '').slice(0, 60), on: it.on !== false }
+    return null
+  }).filter((x) => x && x.text).slice(0, 200)
+}
+
 function linesForPet() {
   const out = {}
   for (const cat of Object.keys(DEFAULT_LINES)) {
     const builtin = DEFAULT_LINES[cat].filter((_, i) => !lineOff.includes(cat + ':' + i))
-    out[cat] = { builtin, custom: Array.isArray(customLines[cat]) ? customLines[cat].slice() : [] }
+    const custom = normalizeCustom(customLines[cat]).filter((it) => it.on).map((it) => it.text)
+    out[cat] = { builtin, custom }
   }
   return out
 }
@@ -1128,10 +1139,7 @@ ipcMain.handle('pet:lines-save', (_e, payload) => {
     if (Array.isArray(p.lineOff)) lineOff = p.lineOff.map(String).slice(0, 500)
     if (p.custom && typeof p.custom === 'object') {
       const next = { click: [], idle: [], pet: [], game: [] }
-      for (const cat of Object.keys(next)) {
-        const arr = p.custom[cat]
-        if (Array.isArray(arr)) next[cat] = arr.map((x) => String(x).slice(0, 60)).filter(Boolean).slice(0, 200)
-      }
+      for (const cat of Object.keys(next)) next[cat] = normalizeCustom(p.custom[cat])
       customLines = next
     }
     saveConfig()
