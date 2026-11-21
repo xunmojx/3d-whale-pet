@@ -941,12 +941,6 @@ function installSpec() {
   }
 }
 
-/** 是不是从 GitHub（含插件市场）装的。 */
-function installedFromGitHub() {
-  const spec = installSpec()
-  return /^github:/i.test(spec) || /^https?:\/\/github\.com\//i.test(spec)
-}
-
 /** DSH 自己的界面地址（用于把用户送回插件页）。 */
 function dshOrigin() {
   const raw = process.env.WHALE_PET_URL || ''
@@ -1272,28 +1266,13 @@ ipcMain.on('pet:menu-action', (_e, a) => {
     case 'balance': queryBalance(); break
     case 'help': openHelpPanel(); break
     case 'update': {
-      const ver = (updateInfo && updateInfo.version) || ''
-      if (!ver) break
-      if (installedFromGitHub()) {
-        // 从 GitHub / 插件市场装的：直接把人送回 DSH 的插件页，让面板帮他更新
-        const origin = dshOrigin()
-        if (origin) {
-          try { shell.openExternal(origin) } catch { /* 打不开就算了 */ }
-        }
-        sendToWin('pet:say', {
-          text: `新版 ${ver} 已经在插件页等着了，去「插件」里点一下更新就行`,
-          ms: 7000,
-        })
-      } else {
-        // 从 Gitee 的 tgz 装的：没有自动更新的通道，只能复制链接让用户重装
-        const url = (updateInfo && updateInfo.url) || ''
-        if (!url) break
-        try { clipboard.writeText(url) } catch { /* 剪贴板不可用就算了 */ }
-        sendToWin('pet:say', {
-          text: `新版 ${ver} 的链接已经复制啦，在插件面板卸载我，再粘贴到安装插件中重新下载就行`,
-          ms: 7000,
-        })
-      }
+      // 现在统一走插件页：点「去更新」直接把 DSH 的插件页面打开，
+      // 不再冒气泡说“链接已复制”之类的废话。
+      const origin = dshOrigin()
+      try {
+        if (origin) shell.openExternal(origin)
+        else shell.openExternal(UPDATE_PAGE)
+      } catch { /* 打不开就算了 */ }
       break
     }
     case 'minimize': try { if (win && !win.isDestroyed()) win.minimize() } catch { /* 忽略 */ } break
