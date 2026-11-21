@@ -1697,6 +1697,8 @@
             const drag = { down: false, sx: 0, sy: 0, moved: false, lastSentAt: 0 };
             const rclick = { down: false, sx: 0, sy: 0, moved: false };
             window.addEventListener('mousedown', function (e) {
+                // 点在左侧动作面板上：不算「点鲸鱼」，也就不会触发收起/拖动
+                if (e.target && e.target.closest && e.target.closest('#action-bubbles')) return;
                 if (e.button === 0) {
                     drag.down = true; drag.sx = e.screenX; drag.sy = e.screenY; drag.moved = false;
                     if (window.petWindow) window.petWindow.dragStart(); // 主进程缓存 getBounds 并锁尺寸
@@ -1716,6 +1718,16 @@
                     // 不做节流：窗口位置直接跟手最顺；之前按 16ms 节流，
                     // 在高刷屏上反而变成一跳一跳的。
                     if (drag.moved && window.petWindow) window.petWindow.dragMove(dx, dy);
+                    // 拖动时身体跟着摆动：按「这一下移动了多少」给一个侧倾/抬头，
+                    // 之后靠 SWIM 自己的缓动慢慢回正，看起来就是被水流带着晃
+                    if (drag.moved && window.__petSwim) {
+                        const stepX = dx - (drag.lastDx || 0);
+                        const stepY = dy - (drag.lastDy || 0);
+                        drag.lastDx = dx; drag.lastDy = dy;
+                        const sw = window.__petSwim;
+                        sw.targetBank = Math.max(-0.45, Math.min(0.45, -stepX * 0.02));
+                        sw.targetPitch = Math.max(-0.30, Math.min(0.30, stepY * 0.012));
+                    }
                 }
                 if (rclick.down) {
                     if (Math.abs(e.clientX - rclick.sx) + Math.abs(e.clientY - rclick.sy) > 6) rclick.moved = true;
@@ -1725,6 +1737,7 @@
                 if (drag.down) {
                     drag.down = false;
                     window.__petDragging = false;
+                    if (drag.moved) window.__petDragGraceUntil = performance.now() + 250;
                     if (window.petWindow) window.petWindow.dragEnd(drag.moved);
                     if (!drag.moved) {
                         if (sleeping) {
@@ -1758,6 +1771,7 @@
                 if (drag.down && drag.moved) {
                     drag.down = false;
                     window.__petDragging = false;
+                    window.__petDragGraceUntil = performance.now() + 250;
                     if (window.petWindow) window.petWindow.dragEnd(true);
                 }
                 rclick.down = false;
@@ -1958,7 +1972,8 @@
                 const btn = e.target.closest('.action-bubble');
                 if (!btn) return;
                 const act = btn.dataset.action;
-                hideActionBubbles();
+                // 点完按钮不再自动收起面板：可以连着喂一条、摸一下、再让它睡
+                // 收起交给「点鲸鱼以外的地方」
                 if (act === 'sleep') {
                     setSleeping(!sleeping);
                     playSound(sleeping ? 'sleep' : 'wake');
@@ -2196,7 +2211,11 @@
 
                     // 摸摸：要在「脑袋上」快速来回划三下才算。
                     // 之前只要在身体上甩够次数就触发，所以随便蹭两下就冒爱心。
-                    if (sx !== null && hit) {
+                    // 拖动窗口时手在动、窗口也在动，这里会被误判成「在头上来回蹭」。
+                    // 拖动期间和松手后的一小会儿都不算摸头。
+                    const pettingBlocked = window.__petDragging ||
+                        (window.__petDragGraceUntil && performance.now() < window.__petDragGraceUntil);
+                    if (sx !== null && hit && !pettingBlocked) {
                         const head = window.__petProjectHead ? window.__petProjectHead() : null;
                         const m = window.__petMeasureModel ? window.__petMeasureModel() : null;
                         const modelPx = (m && m.modelPx) || 100;
@@ -2265,13 +2284,14 @@
                 bridge.onSwim((v) => {
                     const s = window.__petSwim;
                     if (!s || !v) return;
-                    // 手上正拖着它：这期间不要被光标带着转，身体会来回摆
-                    if (window.__petDragging) return;
+                    // 拖动时保留一点摆动（原来那套动作看着更有生命），
+                    // 但幅度减半，免得被手带着来回抽搐
+                    const dragScale = window.__petDragging ? 0.5 : 1;
                     const vx = Math.max(-1, Math.min(1, Number(v.vx) || 0));
                     const vy = Math.max(-1, Math.min(1, Number(v.vy) || 0));
                     // 头和身子都在朝光标偏了，横向侧倾就收一点，别两边打架
-                    s.targetBank = -vx * 0.18;
-                    s.targetPitch = vy * 0.06;
+                    s.targetBank = -vx * 0.18 * dragScale;
+                    s.targetPitch = vy * 0.06 * dragScale;
                     // 有没有在游：靠速度方向的分量判断。停在原地时主进程发的是 0/0。
                     s.targetSwim = (Math.abs(vx) + Math.abs(vy) > 0.06) ? 1 : 0;
                     s.lastAt = performance.now();
@@ -2407,7 +2427,7 @@
                     if (e.key === 'Enter' && input.value.trim()) {
                         const text = input.value.trim();
                         input.value = '';
-                        closeInput();
+                        // 发完不再收起：这个框是常驻的，可以接着派下一个活
                         window.Pet.say('收到，我去看看~', 2000);
                         streamBuf = '';
                         streamTurn = null; streamStep = null;
@@ -2416,10 +2436,7 @@
                         closeInput();
                     }
                 });
-                document.addEventListener('mousedown', outside);
-                function outside(e) {
-                    if (input && e.target !== input) closeInput();
-                }
+                function outside() { /* 以前点别处就收起，现在改成常驻，只有 Esc 才关 */ }
                 function closeInput() {
                     if (!input) return;
                     document.removeEventListener('mousedown', outside);
@@ -2434,6 +2451,7 @@
             }
             window.Pet.on('click', () => {
                 openInput();
+                if (input) { try { input.focus(); } catch (e) { /* 忽略 */ } }
                 if (window.__petKeepPanel) window.__petKeepPanel();
             });
             // ---- 派活后的结果回显：订阅 assistant 流式文本（P3） ----
