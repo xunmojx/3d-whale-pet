@@ -86,6 +86,10 @@ contextBridge.exposeInMainWorld('petWindow', {
     ipcRenderer.send('pet:sleeping', !!on)
   },
   // 光标位置（窗口内坐标）：穿透状态下渲染层收不到鼠标事件，由主进程喂
+  // 主进程通知：面板已被「点外面」收起
+  onPanelClose(cb) {
+    ipcRenderer.on('pet:panel-close', () => cb())
+  },
   onCursor(cb) {
     ipcRenderer.on('pet:cursor', (_e, p) => cb(p))
   },
@@ -97,6 +101,10 @@ contextBridge.exposeInMainWorld('petWindow', {
   // 否则光标一移到左边缘就触发点击穿透，按钮点不到。
   setPanelOpen(on) {
     ipcRenderer.send('pet:panel', !!on)
+  },
+  // 全屏点击捕手被点到（= 点了鲸鱼以外的地方）
+  catcherHit() {
+    ipcRenderer.send('catcher-hit')
   },
 })
 
