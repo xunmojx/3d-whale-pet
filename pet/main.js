@@ -1241,6 +1241,7 @@ ipcMain.on('pet:close-rename', () => {
 // 拉不到就算了——网络问题不该打扰用户。
 const UPDATE_URL = 'https://gitee.com/in-search-of-ink/dsh-3d-whale-pet/raw/master/version.json'
 const UPDATE_PAGE = 'https://gitee.com/in-search-of-ink/dsh-3d-whale-pet'
+const UPDATE_TGZ = 'https://gitee.com/in-search-of-ink/dsh-3d-whale-pet/raw/master/dsh-3d-whale-pet.tgz'
 let updateInfo = null          // { version, page, url } 或 null
 let lastCheckAt = 0            // 上次检查的时间（节流用）
 
@@ -1508,10 +1509,12 @@ ipcMain.on('pet:menu-action', (_e, a) => {
     case 'update': {
       // 先把 DSH 窗口叫到前面（插件页就在里面）。直接开浏览器不行：
       // DSH 的 web 要令牌，令牌只存在桌面端进程里，浏览器打开只会 401。
+      // 顺手把「直连 tgz」写进剪贴板：国内 npm 镜像常常滞后，
+      // 用户在插件面板里搜包名可能装到旧版，直连链接一定能拿到新版
+      try { clipboard.writeText(UPDATE_TGZ) } catch { /* 剪贴板不可用就算 */ }
       bringDshToFront().then((ok) => {
         if (ok) {
-          // 只把 DSH 叫到前面，用户常常「看不出发生了什么」，补一句指路
-          sendToWin('pet:say', { text: '在「插件」页点更新', ms: 4500 })
+          sendToWin('pet:say', { text: '已复制直连链接，去「插件」页粘贴安装', ms: 5000 })
           return
         }
         // 切窗口失败：退而打开链接，并明确说一句，别让用户以为点了没反应
