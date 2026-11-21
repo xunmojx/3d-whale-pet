@@ -1115,6 +1115,8 @@ function pushLines() {
   sendToWin('pet:lines', linesForPet())
 }
 
+ipcMain.on('pet:lines-want', () => pushLines())
+
 ipcMain.on('pet:lines-close', () => {
   if (linesWin && !linesWin.isDestroyed()) linesWin.close()
 })
