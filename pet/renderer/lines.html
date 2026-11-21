@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>台词管理</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, "Microsoft YaHei", sans-serif; background: #141a2c; color: #dfe6ff; font-size: 13px; }
+  header { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,.08); display: flex; align-items: center; gap: 10px; }
+  header h1 { font-size: 14px; margin: 0; flex: 1; font-weight: 600; }
+  button { font: inherit; cursor: pointer; border-radius: 7px; border: 1px solid rgba(120,140,255,.3); background: rgba(77,107,254,.18); color: #dfe6ff; padding: 5px 10px; }
+  button:hover { background: rgba(77,107,254,.34); }
+  button.ghost { background: transparent; }
+  main { padding: 12px 16px 24px; overflow-y: auto; height: calc(100vh - 52px); }
+  .cat { margin-bottom: 18px; }
+  .cat > h2 { font-size: 12px; color: #9db0ff; margin: 0 0 8px; font-weight: 600; letter-spacing: .5px; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+  .row input[type=checkbox] { width: 15px; height: 15px; accent-color: #4d6bfe; }
+  .row .txt { flex: 1; word-break: break-all; }
+  .row .txt.off { opacity: .35; text-decoration: line-through; }
+  .tag { font-size: 10px; padding: 1px 5px; border-radius: 4px; background: rgba(120,140,255,.18); color: #9db0ff; }
+  .tag.mine { background: rgba(80,200,140,.2); color: #7ee3b0; }
+  .add { display: flex; gap: 6px; margin-top: 8px; }
+  .add input { flex: 1; padding: 6px 8px; border-radius: 7px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.05); color: #dfe6ff; font: inherit; }
+  .add input:focus { outline: none; border-color: #4d6bfe; }
+  .empty { color: rgba(200,210,240,.4); padding: 4px 0; }
+  .hint { color: rgba(200,210,240,.45); font-size: 11px; margin: 2px 0 10px; }
+  .mini { font-size: 11px; padding: 2px 7px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>💬 台词管理</h1>
+  <button id="close" class="ghost mini">关闭</button>
+</header>
+<main>
+  <p class="hint">内置台词只能勾选「用不用」，不能删除；自定义台词可以随意增删改，都存在本地，升级插件不会丢。</p>
+  <div id="root"></div>
+</main>
+<script>
+  const api = Object.assign({}, window.petWindow || {}, window.petBridge || {});
+  const CATS = [
+    { id: 'click', label: '被点击时' },
+    { id: 'idle', label: '待机闲聊' },
+    { id: 'pet', label: '被摸头时' },
+    { id: 'game', label: '游戏里' },
+  ];
+  let state = { defaults: {}, lineOff: [], custom: {} };
+
+  function esc(t) {
+    return String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
+  function render() {
+    const root = document.getElementById('root');
+    root.innerHTML = CATS.map((c) => {
+      const builtin = (state.defaults[c.id] || []);
+      const customs = (state.custom[c.id] || []);
+      const rows = builtin.map((txt, i) => {
+        const off = state.lineOff.includes(c.id + ':' + i);
+        return '<label class="row"><input type="checkbox" data-builtin="' + c.id + ':' + i + '" ' + (off ? '' : 'checked') + '>' +
+          '<span class="txt ' + (off ? 'off' : '') + '">' + esc(txt) + '</span><span class="tag">内置</span></label>';
+      }).join('');
+      const mine = customs.map((txt, i) =>
+        '<div class="row"><span class="txt">' + esc(txt) + '</span><span class="tag mine">我的</span>' +
+        '<button class="mini ghost" data-edit="' + c.id + ':' + i + '">改</button>' +
+        '<button class="mini ghost" data-del="' + c.id + ':' + i + '">删</button></div>'
+      ).join('');
+      return '<section class="cat"><h2>' + esc(c.label) + '</h2>' +
+        (builtin.length ? rows : '<div class="empty">这一类没有内置台词</div>') +
+        (mine ? '<div style="margin-top:8px">' + mine + '</div>' : '') +
+        '<div class="add"><input data-input="' + c.id + '" placeholder="加一句自定义台词…" maxlength="60">' +
+        '<button data-add="' + c.id + '">添加</button></div></section>';
+    }).join('');
+
+    root.querySelectorAll('[data-builtin]').forEach((el) => {
+      el.addEventListener('change', () => {
+        const key = el.dataset.builtin;
+        const set = new Set(state.lineOff);
+        if (el.checked) set.delete(key); else set.add(key);
+        state.lineOff = [...set];
+        save();
+        render();
+      });
+    });
+    root.querySelectorAll('[data-add]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const cat = el.dataset.add;
+        const inp = root.querySelector('[data-input="' + cat + '"]');
+        const v = (inp.value || '').trim();
+        if (!v) return;
+        state.custom[cat] = (state.custom[cat] || []).concat([v]);
+        save();
+        render();
+      });
+    });
+    root.querySelectorAll('[data-del]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const [cat, idx] = el.dataset.del.split(':');
+        state.custom[cat].splice(Number(idx), 1);
+        save();
+        render();
+      });
+    });
+    root.querySelectorAll('[data-edit]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const [cat, idx] = el.dataset.edit.split(':');
+        const cur = state.custom[cat][Number(idx)];
+        const v = window.prompt('修改这句台词：', cur);
+        if (v === null) return;
+        const t = v.trim();
+        if (!t) return;
+        state.custom[cat][Number(idx)] = t;
+        save();
+        render();
+      });
+    });
+  }
+
+  let saveTimer = null;
+  function save() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      if (api.linesSave) api.linesSave({ lineOff: state.lineOff, custom: state.custom });
+    }, 150);
+  }
+
+  document.getElementById('close').addEventListener('click', () => { if (api.closeLines) api.closeLines(); else window.close(); });
+
+  (async function boot() {
+    if (api.linesGet) {
+      const data = await api.linesGet();
+      if (data) state = { defaults: data.defaults || {}, lineOff: data.lineOff || [], custom: data.custom || {} };
+    }
+    if (api.onLinesState) api.onLinesState((d) => { if (d) { state = { defaults: d.defaults || {}, lineOff: d.lineOff || [], custom: d.custom || {} }; render(); } });
+    render();
+  })();
+</script>
+</body>
+</html>
