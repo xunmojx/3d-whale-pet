@@ -659,7 +659,9 @@ function tickFollow() {
   // 把「光标在窗口里的坐标」丢给渲染层做光线检测（穿透时渲染层收不到鼠标事件，
   // 只能由主进程喂坐标）。约 60Hz，位置没动就跳过。
   if (now - lastCursorSent.at > 16 &&
-      (lastCursorSent.x === null || Math.abs(rel.cx - lastCursorSent.x) > 0.5 || Math.abs(rel.cy - lastCursorSent.y) > 0.5)) {
+      (lastCursorSent.x === null || Math.abs(rel.cx - lastCursorSent.x) > 0.5 ||
+       Math.abs(rel.cy - lastCursorSent.y) > 0.5 ||
+       now - lastCursorSent.at > 150)) {
     lastCursorSent = { x: rel.cx, y: rel.cy, at: now }
     // sx/sy 是屏幕绝对坐标：渲染层判「摸摸」要用它。
     // 只用窗口内相对坐标的话，它自己一游动，相对坐标就跟着变，晃动检测全被搅乱。
@@ -983,9 +985,14 @@ public class W {
 '@
 $p = Get-Process | Where-Object { $_.MainWindowTitle -like '*DeepSeek Harness*' } | Select-Object -First 1
 if ($p) {
-  [W]::ShowWindow($p.MainWindowHandle, 9) | Out-Null
-  [W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
-  'FOUND'
+  # 先用 AppActivate（脚本里更可靠），失败再退回 Win32 的 SetForegroundWindow
+  $ok = $false
+  try { $ok = (New-Object -ComObject WScript.Shell).AppActivate($p.Id) } catch { }
+  if (-not $ok) {
+    [W]::ShowWindow($p.MainWindowHandle, 9) | Out-Null
+    $ok = [W]::SetForegroundWindow($p.MainWindowHandle)
+  }
+  if ($ok) { 'FOUND' } else { 'FAILED' }
 } else { 'NOTFOUND' }
 `
   return new Promise((resolve) => {
@@ -994,7 +1001,7 @@ if ($p) {
         'powershell.exe',
         ['-NoProfile', '-NonInteractive', '-Command', script],
         { windowsHide: true, timeout: 5000 },
-        (err, stdout) => resolve(!err && String(stdout).includes('FOUND')),
+        (err, stdout) => resolve(!err && String(stdout).trim().split(/\s+/).includes('FOUND')),
       )
     } catch { resolve(false) }
   })
@@ -1294,6 +1301,7 @@ ipcMain.on('pet:menu-resize', (_e, h) => {
 })
 ipcMain.on('pet:menu-close', () => closeMenuWindow())
 
+
 // 这些操作做完之后菜单继续保持打开，方便连着改好几项
 const KEEP_MENU_OPEN = new Set(['follow', 'roam', 'size', 'skin', 'dance'])
 
@@ -1332,8 +1340,15 @@ ipcMain.on('pet:menu-action', (_e, a) => {
       // 先把 DSH 窗口叫到前面（插件页就在里面）。直接开浏览器不行：
       // DSH 的 web 要令牌，令牌只存在桌面端进程里，浏览器打开只会 401。
       bringDshToFront().then((ok) => {
-        if (ok) return
-        try { shell.openExternal(dshOrigin() || UPDATE_PAGE) } catch { /* 打不开就算了 */ }
+        if (ok) {
+          // 只把 DSH 叫到前面，用户常常「看不出发生了什么」，补一句指路
+          sendToWin('pet:say', { text: '在「插件」页点更新', ms: 4500 })
+          return
+        }
+        // 切窗口失败：退而打开链接，并明确说一句，别让用户以为点了没反应
+        try { shell.openExternal(UPDATE_PAGE) } catch { /* 打不开就算了 */ }
+        sendToWin('pet:say', { text: '更新页面打不开，已复制链接', ms: 5000 })
+        try { clipboard.writeText(UPDATE_PAGE) } catch { /* 剪贴板不可用 */ }
       })
       break
     }
@@ -1531,19 +1546,11 @@ let gateway = null
 // 桌宠头上会冒省略号；结果出来时闪一下灯泡。
 let thinking = false
 let thinkingTimer = null
-let thinkPollTimer = null, thinkBaseline = 0, thinkSession = null, thinkUsageBaseline = -1
+let thinkPollTimer = null, thinkBaseline = 0, thinkSession = null
 
 // DSH 对外的 $events 流只有「会话开始跑 / 跑完」两种通知，没有逐条消息。
 // 想让灯泡正好落在「开始输出结果」那一刻，就只能自己盯：轮询 session.list，
 // 一旦这轮会话的 updatedAt 往前走了，说明已经有新的产出，思考阶段结束。
-function usageSum(it) {
-  try {
-    const u = (it.projections && it.projections.values && it.projections.values.tokenUsage) || {}
-    let sum = 0
-    for (const k of Object.keys(u)) if (typeof u[k] === 'number') sum += u[k]
-    return sum
-  } catch { return 0 }
-}
 
 async function startThinkWatch() {
   try {
@@ -1553,7 +1560,6 @@ async function startThinkWatch() {
     if (!live.length) return
     thinkSession = live[0].sessionId
     thinkBaseline = live[0].updatedAt || 0
-    thinkUsageBaseline = usageSum(live[0])
   } catch { return }
   clearInterval(thinkPollTimer)
   thinkPollTimer = setInterval(async () => {
@@ -1561,15 +1567,8 @@ async function startThinkWatch() {
       const { items } = await call('session.list', {})
       const it = (items || []).find((x) => x && x.sessionId === thinkSession)
       if (!it) return
-      // 只要出现下面任一情况，就认为「开始输出了」：
-      //  token 数动了（模型开始吐字，最灵敏）
-      //  updatedAt 前进（这一轮落了新内容）
-      //  running 变 false（跑完了，兜底）
-      const u = usageSum(it)
-      if (thinkUsageBaseline >= 0 && u > thinkUsageBaseline) {
-        setThinking(false)
-        return
-      }
+      // 只用「这一轮真正结束了」的信号。之前拿 token 总数当依据，
+      // 但其中大头是 cacheRead，请求一发出就先涨，等于刚开始想就判成结束。
       if ((it.updatedAt || 0) > thinkBaseline || it.running === false) setThinking(false)
     } catch { /* 网络抖动，下一轮再看 */ }
   }, 300)
