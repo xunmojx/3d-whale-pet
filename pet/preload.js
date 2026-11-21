@@ -117,6 +117,22 @@ contextBridge.exposeInMainWorld('petBridge', {
   onThinking(cb) {
     ipcRenderer.on('pet:thinking', (_e, on) => cb(!!on))
   },
+  // 台词：内置 + 自定义
+  closeLines() {
+    ipcRenderer.send('pet:lines-close')
+  },
+  linesGet() {
+    return ipcRenderer.invoke('pet:lines-get')
+  },
+  linesSave(payload) {
+    return ipcRenderer.invoke('pet:lines-save', payload)
+  },
+  onLines(cb) {
+    ipcRenderer.on('pet:lines', (_e, data) => cb(data))
+  },
+  onLinesState(cb) {
+    ipcRenderer.on('pet:lines-state', (_e, data) => cb(data))
+  },
   // 连接状态
   onConnection(cb) {
     ipcRenderer.on('pet:connection', (_e, info) => cb(info))
