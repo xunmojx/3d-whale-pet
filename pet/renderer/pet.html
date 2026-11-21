@@ -2087,6 +2087,12 @@
             })();
 
             if (bridge.onThinking) bridge.onThinking(function (on) { window.__petSetThinking(on); });
+            // 全屏点击捕手被点到 → 收起左键动作面板
+            if (window.petWindow && window.petWindow.onPanelClose) {
+                window.petWindow.onPanelClose(function () {
+                    if (window.__petHidePanel) window.__petHidePanel();
+                });
+            }
             window.__petLogs = [];
             if (bridge.onLog) bridge.onLog((data) => { window.__petLogs.push(data); });
                         bridge.onConnection((info) => {
@@ -2117,32 +2123,13 @@
             // 1.6 秒内攒够 3 次才认；headWigSign 记录上一次的划动方向。
             let headWigSign = 0, headAccum = 0, headStrokeAt = [], lastScreenAt = 0;
 
-                // 光标坐标还用来判断「人已经走开了」：不在窗口里超过 1.2 秒就把面板收掉
-                // 在窗口里点到面板以外的地方，立刻收起（穿透区域收不到点击，
-                // 那条路靠下面的「光标离开」兜底）
+                // 面板打开时主进程让整窗都接鼠标，所以点窗口里任何空白处都会走到这里 → 收起
                 document.addEventListener('mousedown', function (e) {
                     const panel = document.getElementById('action-bubbles');
                     if (!panel || !panel.classList.contains('open')) return;
                     if (panel.contains(e.target)) return;
                     if (window.__petHidePanel) window.__petHidePanel();
                 }, true);
-                // 注意不能用「坐标多久没更新」来判断离开：主进程现在有心跳，
-                // 光标不动时也会每 150ms 发一次，那个时间戳永远是新的。
-                // 所以要自己记「从什么时候开始一直在窗口外」。
-                let outsideSince = 0;
-                setInterval(function () {
-                    const panel = document.getElementById('action-bubbles');
-                    if (!panel || !panel.classList.contains('open')) { outsideSince = 0; return; }
-                    const c = window.__petLastCursor;
-                    if (!c) { outsideSince = 0; return; }
-                    const outside = c.x < 0 || c.x > window.innerWidth || c.y < 0 || c.y > window.innerHeight;
-                    if (!outside) { outsideSince = 0; return; }
-                    if (!outsideSince) outsideSince = performance.now();
-                    if (performance.now() - outsideSince > 700) {
-                        outsideSince = 0;
-                        if (window.__petHidePanel) window.__petHidePanel();
-                    }
-                }, 150);
 
                 window.petWindow.onCursor((p) => {
                     window.__petLastCursor = { x: p.x, y: p.y, at: performance.now() };
